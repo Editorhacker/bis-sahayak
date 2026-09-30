@@ -50,6 +50,8 @@ docker compose version   # should print v2.x
 
 ```bash
 # On EC2
+sudo mkdir -p /opt/saarthi
+sudo chown $USER:$USER /opt/saarthi
 git clone <your-repo> /opt/saarthi
 cd /opt/saarthi/backend
 

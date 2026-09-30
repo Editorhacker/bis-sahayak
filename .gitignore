@@ -39,8 +39,7 @@ tmp/
 temp/
 *.tmp
 
-# Drizzle
-drizzle/
+
 
 # TypeScript cache
 *.tsbuildinfo

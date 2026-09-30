@@ -18,21 +18,20 @@ services:
     container_name: saarthi-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: business_saarthi
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-business_saarthi}
     ports:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./drizzle/0000_groovy_ghost_rider.sql:/docker-entrypoint-initdb.d/01_schema.sql
-      - ./drizzle/0001_fine_mercury.sql:/docker-entrypoint-initdb.d/02_patch.sql
+      - ./init-db.sql:/docker-entrypoint-initdb.d/01_init.sql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d business_saarthi"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-business_saarthi}"]
       interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 20s
+      start_period: 10s
 
   # ── 2. Ollama (Llama 3.2 3B) ────────────────────────────────────
   # CPU-only. On a GPU EC2 instance (g4dn.xlarge), add:
@@ -72,7 +71,7 @@ services:
       EMBEDDING_MODEL: nomic-embed-text
 
       # Database – same instance as TypeScript backend
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/business_saarthi
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/business_saarthi}
 
       # Internal auth – shared with TypeScript backend
       INTERNAL_SECRET: ${AI_SERVICE_SECRET}
@@ -111,7 +110,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOST: 0.0.0.0
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/business_saarthi
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/business_saarthi}
 
       # Auth
       JWT_SECRET: ${JWT_SECRET}
