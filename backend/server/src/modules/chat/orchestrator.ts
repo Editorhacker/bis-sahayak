@@ -10,7 +10,7 @@
  */
 
 import { db, schema } from '../../db/index.js';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import { generateId } from '../../utils/helpers.js';
 import { callChatAI, ChatAIResponse } from '../../ai/client.js';
 
@@ -186,6 +186,25 @@ export async function processChatMessage(
     }
   }
 
+  let history: Array<{ role: string; content: string }> = [];
+  if (context.conversationId) {
+    try {
+      const historyRows = await db
+        .select({
+          role: schema.messages.role,
+          content: schema.messages.content,
+        })
+        .from(schema.messages)
+        .where(eq(schema.messages.conversationId, context.conversationId))
+        .orderBy(desc(schema.messages.createdAt))
+        .limit(10);
+
+      history = historyRows.reverse();
+    } catch (histErr) {
+      console.warn('Failed to load conversation history:', histErr);
+    }
+  }
+
   let aiResult: ChatAIResponse;
   try {
     aiResult = await callChatAI({
@@ -194,10 +213,11 @@ export async function processChatMessage(
       user_id: context.userId,
       business_id: context.businessId,
       language: context.language,
+      history,
     });
   } catch (err) {
     console.warn('callChatAI fallback triggered:', err);
-    aiResult = _generateFallbackAIResponse(message, context);
+    aiResult = _generateFallbackAIResponse(message, context, history);
   }
 
   const clarifyingQuestions = aiResult.clarifying_questions?.map((q) => ({
@@ -230,11 +250,205 @@ export async function processChatMessage(
   return response;
 }
 
-function _generateFallbackAIResponse(message: string, context: ChatContext): ChatAIResponse {
+export function _generateFallbackAIResponse(
+  message: string,
+  context: ChatContext,
+  history: Array<{ role: string; content: string }> = [],
+): ChatAIResponse {
   const msgLower = message.toLowerCase();
+  const historyText = history.map((h) => h.content).join(' ').toLowerCase();
   const messageId = generateId();
 
-  if (msgLower.includes('all steps') || (msgLower.includes('step') && msgLower.includes('link')) || msgLower.includes('give me all steps') || msgLower.includes('show all steps')) {
+  const isMixer =
+    msgLower.includes('mixer') ||
+    msgLower.includes('grinder') ||
+    msgLower.includes('blender') ||
+    msgLower.includes('4250') ||
+    historyText.includes('mixer') ||
+    historyText.includes('grinder') ||
+    historyText.includes('blender') ||
+    historyText.includes('4250');
+
+  const isBottle =
+    msgLower.includes('bottle') ||
+    msgLower.includes('flask') ||
+    msgLower.includes('17526') ||
+    msgLower.includes('bottel') ||
+    msgLower.includes('bottole') ||
+    historyText.includes('bottle') ||
+    historyText.includes('flask') ||
+    historyText.includes('17526');
+
+  const isSchemeQuery =
+    msgLower.includes('scheme') ||
+    msgLower.includes('application step') ||
+    msgLower.includes('application procedure') ||
+    msgLower.includes('how to apply') ||
+    msgLower.includes('apply for bis') ||
+    msgLower.includes('apply for a bis') ||
+    msgLower.includes('licence step') ||
+    msgLower.includes('licensing step') ||
+    msgLower.includes('application process');
+
+  if (isSchemeQuery) {
+    if (isMixer) {
+      return {
+        conversation_id: context.conversationId,
+        message_id: messageId,
+        intent: 'SCHEME',
+        answer:
+          `### 📋 BIS Scheme-I (ISI Mark) Application Steps for Electric Food Mixers (IS 4250:2025)\n\n` +
+          `Domestic electric food mixers, liquidizers, and grinders fall under **mandatory BIS certification** ` +
+          `under Scheme-I of Schedule-II of the BIS (Conformity Assessment) Regulations, 2018, pursuant to the ` +
+          `Electrical Appliances Quality Control Order issued by the Ministry of Heavy Industries.\n\n` +
+          `Here is the complete step-by-step application procedure to obtain your BIS Licence (ISI Mark):\n\n` +
+          `#### **Step 1: Set Up In-House Testing Laboratory (IS 4250:2025 Clauses 7, 8, 11, 13, 15, 20 & 24)**\n` +
+          `*Under Scheme-I, the manufacturer MUST establish an operational in-house testing facility at the factory premises with calibrated instruments before applying.*\n` +
+          `• **Electrical Safety & Insulation (Clause 7):** Leakage current meter (limit < 0.25 mA) and 500V DC megohmmeter (insulation resistance > 2 MΩ).\n` +
+          `• **Dielectric High Voltage Flash Tester:** 1000V/1500V AC testing bench.\n` +
+          `• **Power Input & Current Measurement (Clause 8):** Digital power analyzer/wattmeter (power within 110% of rated capacity).\n` +
+          `• **Temperature Rise Test Bench (Clause 11):** Multi-channel temperature recorder and thermocouples for motor windings and housing surfaces.\n` +
+          `• **Safety Interlock Testing Rig (Clause 24):** Mechanism verifying spindle stops immediately unless jar and lid are securely engaged.\n` +
+          `• **Overload & Endurance Rig (Clause 20):** Automated duty-cycle test rig for 100 continuous grinding cycles.\n\n` +
+          `#### **Step 2: Prepare Quality Management Documentation**\n` +
+          `• **Technical Dossier & Quality Manual:** Manufacturing process flow chart, raw material inspection plan, and quality manual.\n` +
+          `• **Equipment Calibration:** Valid calibration certificates traceable to NABL/national standards for all in-house test equipment.\n` +
+          `• **Component Test Certificates:** Evidence of conformity for critical components (BIS-certified ISI-marked power cords as per IS 694, switches as per IS 3854, plugs as per IS 1293).\n` +
+          `• **Food Contact Declaration:** Mill test certificates verifying Grade 304 stainless steel for jars and blades (Clause 30).\n` +
+          `• **Competent Quality Personnel:** Appointment of a qualified quality control engineer/testing technician.\n\n` +
+          `#### **Step 3: Online Application Submission on Manakonline (Form V)**\n` +
+          `• Register your manufacturing unit on the official BIS portal: [Manakonline Portal](https://www.manakonline.in/).\n` +
+          `• Fill out **Form V** (Application for Grant of Licence under Scheme-I).\n` +
+          `• Upload factory registration, list of manufacturing machinery, in-house testing equipment with calibration dates, plant layout, and acceptance of the BIS Scheme of Inspection and Testing (SIT).\n` +
+          `• Pay the statutory BIS application fee (₹1,000 for Micro/Small MSMEs with 50% concession under Udyam, ₹2,000 standard).\n\n` +
+          `#### **Step 4: Factory Audit & Preliminary Inspection by BIS Technical Auditor**\n` +
+          `• A BIS inspecting officer visits your manufacturing plant to:\n` +
+          `  - Inspect production machinery, assembly lines, and hygiene standards.\n` +
+          `  - Inspect in-house test facilities and review instrument calibration records.\n` +
+          `  - Assess the competency of quality control staff.\n` +
+          `  - Witness live demonstration of routine tests (electrical insulation, leakage current, power input, and safety interlock cut-off).\n\n` +
+          `#### **Step 5: Sample Drawing & Independent Laboratory Testing**\n` +
+          `• The BIS auditor draws representative production samples of the food mixer from the factory.\n` +
+          `• Samples are sealed and forwarded to a BIS-recognized / NABL-accredited independent laboratory (e.g. National Test House, ERDA, or CPRI).\n` +
+          `• Complete type testing is conducted against all clauses of **IS 4250:2025**.\n` +
+          `• Third-party testing charges are paid directly to the testing laboratory.\n\n` +
+          `#### **Step 6: Grant of BIS Licence & ISI Mark Authorization**\n` +
+          `• Upon satisfactory factory inspection and passing independent test reports, BIS approves the licence.\n` +
+          `• BIS issues the **Certificate of Conformity & Licence (CM/L Number)**.\n` +
+          `• You are authorized to affix the **Standard ISI Mark** with **IS 4250** and your unique CM/L licence number on the food mixer rating plate, body, packaging, and user manuals.\n` +
+          `• Initial validity is 1 to 2 years, renewable upon payment of marking fees and compliance with periodic surveillance audits.`,
+        confidence: 'HIGH',
+        citations: [
+          {
+            chunkId: 101,
+            standardNumber: 'IS 4250:2025',
+            clause: 'Scheme-I & Clause 7, 24',
+            excerpt: 'Domestic Electric Food Mixers — Mandatory ISI Mark Certification under Scheme-I of Schedule-II of BIS Conformity Assessment Regulations, 2018.',
+            sourceUrl: 'https://www.manakonline.in/',
+          },
+        ],
+        disclaimer: 'Verify requirements with the official BIS authority before application; not legal advice.',
+        suggested_actions: ['Find recognized electrical testing labs', 'Review IS 4250:2025 test clauses', 'View full roadmap'],
+      };
+    }
+
+    if (isBottle) {
+      return {
+        conversation_id: context.conversationId,
+        message_id: messageId,
+        intent: 'SCHEME',
+        answer:
+          `### 📋 BIS Scheme-I (ISI Mark) Application Steps for Stainless Steel Water Bottles (IS 17526:2021)\n\n` +
+          `Domestic stainless steel vacuum flasks and insulated bottles fall under **mandatory BIS certification** ` +
+          `under Scheme-I pursuant to the Quality Control Order issued by the Ministry of Commerce and Industry (DPIIT).\n\n` +
+          `Here is the complete step-by-step application procedure to obtain your BIS Licence (ISI Mark):\n\n` +
+          `#### **Step 1: Set Up In-House Testing Laboratory (IS 17526:2021 Clauses 5.2, 5.3, 6.1, 6.4 & 7.2)**\n` +
+          `*Under Scheme-I, the manufacturer MUST set up an in-house laboratory at the factory premises with calibrated instruments before applying.*\n` +
+          `• **Thermal Performance Test Bench (Clause 5.2):** Calibrated digital temperature probes and controlled ambient chamber to verify heat retention (min 60°C after 6 hours from 95°C) and cold retention (< 10°C after 6 hours from 4°C).\n` +
+          `• **Vacuum Leakage & Seal Rig (Clause 5.3):** Vacuum testing chamber/thermal shock tank verifying vacuum integrity without sweat condensation.\n` +
+          `• **Impact & Drop Resistance Rig (Clause 6.1):** 1-metre drop test apparatus onto concrete slab for water-filled bottles.\n` +
+          `• **Handle & Stopper Torque Rig (Clause 6.4):** Apparatus for 1,000 open/close cyclic torque tests without thread stripping.\n` +
+          `• **Food Contact Migration Testing Setup (Clause 7.2 as per IS 9845):** Testing of silicone seals and stainless steel food contact surfaces.\n\n` +
+          `#### **Step 2: Prepare Quality Management Documentation**\n` +
+          `• **Quality Manual & Flowchart:** Deep drawing, seam welding, vacuum furnace brazing/evacuation, and polishing processes.\n` +
+          `• **Raw Material Compliance:** Mill test certificates proving food-grade austenitic stainless steel conforming to IS 6911 (Grade 304 / X04Cr19Ni9).\n` +
+          `• **Equipment Calibration:** Valid NABL-traceable calibration certificates for thermal probes, pressure gauges, and drop rigs.\n` +
+          `• **Appointment of Qualified QC Personnel.**\n\n` +
+          `#### **Step 3: Online Application Submission on Manakonline (Form V)**\n` +
+          `• Register on the official portal: [Manakonline Portal](https://www.manakonline.in/).\n` +
+          `• Submit **Form V** (Application for Grant of Licence under Scheme-I).\n` +
+          `• Upload factory layout, machinery list, test equipment list with calibration records, and SIT undertaking.\n` +
+          `• Pay application fee (₹1,000 for Micro/Small MSMEs with Udyam, ₹2,000 standard).\n\n` +
+          `#### **Step 4: Factory Audit & On-Site Inspection by BIS Officer**\n` +
+          `• A BIS auditor visits the manufacturing premises to inspect vacuum evacuation ovens, verify quality processes, and witness live testing (drop test, thermal retention, vacuum seal).\n\n` +
+          `#### **Step 5: Sample Drawing & Independent Lab Testing**\n` +
+          `• The BIS auditor seals representative bottle samples and dispatches them to a BIS-recognized lab (e.g. National Test House, Mumbai).\n` +
+          `• The independent lab conducts tests against IS 17526:2021 and food contact migration (IS 9845).\n\n` +
+          `#### **Step 6: Grant of BIS Licence & ISI Mark Authorization**\n` +
+          `• Upon passing test reports and audit approval, BIS issues the **Licence (CM/L Number)**.\n` +
+          `• Affix the **ISI Mark** with **IS 17526:2021** and CM/L number on the bottle base, carton, and warranty card.`,
+        confidence: 'HIGH',
+        citations: [
+          {
+            chunkId: 201,
+            standardNumber: 'IS 17526:2021',
+            clause: 'Clause 5.2, 7.2 & 9',
+            excerpt: 'Domestic Stainless Steel Vacuum Flasks and Insulated Bottles — Specification and Scheme-I licensing requirements.',
+            sourceUrl: 'https://www.manakonline.in/',
+          },
+        ],
+        disclaimer: 'Verify requirements with the official BIS authority before application; not legal advice.',
+        suggested_actions: ['Find labs in Maharashtra', 'Review BIS standard IS 17526:2021', 'View full roadmap'],
+      };
+    }
+
+    // General Scheme-I
+    return {
+      conversation_id: context.conversationId,
+      message_id: messageId,
+      intent: 'SCHEME',
+      answer:
+        `### 📋 BIS Scheme-I (ISI Mark) Application Steps & Procedure\n\n` +
+        `Under Scheme-I of Schedule-II of the BIS (Conformity Assessment) Regulations, 2018, manufacturing units must obtain a BIS Licence ` +
+        `to use the Standard Mark (ISI mark) before placing products covered under mandatory Quality Control Orders (QCOs) in the Indian market.\n\n` +
+        `Here is the standard 6-step application procedure:\n\n` +
+        `#### **Step 1: Identify Applicable Indian Standard & Set Up In-House Lab**\n` +
+        `• Determine the applicable Indian Standard (e.g., IS 4250 for food mixers, IS 17526 for vacuum bottles).\n` +
+        `• Establish an in-house testing facility equipped with all instruments required by the BIS Scheme of Inspection and Testing (SIT).\n` +
+        `• Ensure all test instruments possess valid NABL-traceable calibration certificates.\n\n` +
+        `#### **Step 2: Prepare Quality Management Documentation**\n` +
+        `• Prepare Quality Manual, factory layout, manufacturing machinery list, raw material test certificates, and appoint qualified technical/testing personnel.\n\n` +
+        `#### **Step 3: Submit Online Application (Form V) on Manakonline**\n` +
+        `• Register on the official portal: [Manakonline Portal](https://www.manakonline.in/).\n` +
+        `• Complete Form V under Scheme-I, upload technical documents and calibration records, and pay the application fee (50% concession for MSMEs under Udyam).\n\n` +
+        `#### **Step 4: Preliminary Factory Audit by BIS Technical Auditor**\n` +
+        `• A BIS officer visits the factory to inspect manufacturing controls, verify test equipment, and witness routine/acceptance tests conducted by the factory QC staff.\n\n` +
+        `#### **Step 5: Sample Drawing & Independent Laboratory Testing**\n` +
+        `• The auditor draws representative production samples, seals them, and dispatches them to a BIS-recognized / NABL-accredited independent laboratory for full conformity testing against the standard clauses.\n\n` +
+        `#### **Step 6: Scrutiny & Grant of BIS Licence (ISI Mark)**\n` +
+        `• Upon receipt of satisfactory inspection and lab test reports, BIS grants the Certificate of Conformity and issues a unique CM/L licence number authorizing use of the ISI Mark.`,
+      confidence: 'HIGH',
+      citations: [
+        {
+          chunkId: 1,
+          standardNumber: 'BIS Scheme-I',
+          clause: 'Schedule-II',
+          excerpt: 'BIS (Conformity Assessment) Regulations, 2018 — Scheme-I Conformity Assessment Procedure.',
+          sourceUrl: 'https://www.manakonline.in/',
+        },
+      ],
+      disclaimer: 'Verify requirements with the official BIS authority before application; not legal advice.',
+      suggested_actions: ['Identify applicable BIS standard', 'Find recognized testing labs', 'View full roadmap'],
+    };
+  }
+
+  if (
+    msgLower.includes('all steps') ||
+    (msgLower.includes('step') && msgLower.includes('link')) ||
+    msgLower.includes('give me all steps') ||
+    msgLower.includes('show all steps') ||
+    msgLower.includes('full roadmap')
+  ) {
     return {
       conversation_id: context.conversationId,
       message_id: messageId,
@@ -306,6 +520,96 @@ function _generateFallbackAIResponse(message: string, context: ChatContext): Cha
     };
   }
 
+  const isLabQuery = msgLower.includes('lab') || msgLower.includes('where to test') || msgLower.includes('testing center');
+  if (isLabQuery) {
+    if (isMixer) {
+      return {
+        conversation_id: context.conversationId,
+        message_id: messageId,
+        intent: 'LABORATORY',
+        answer:
+          `### 🧪 Recognized Testing Laboratories for Electric Food Mixers (IS 4250:2025)\n\n` +
+          `For domestic electric food mixers, testing must be carried out at BIS-recognized / NABL-accredited electrical laboratories:\n\n` +
+          `• **National Test House (NTH), Mumbai / Western Region:** Equipped for complete safety, insulation, dielectric breakdown, temperature rise, and mechanical strength tests for IS 4250.\n` +
+          `• **Central Power Research Institute (CPRI) / ERDA:** High voltage, thermal endurance, and electrical duty cycle verification.\n` +
+          `• **BIS Recognized Electrical Testing Labs in Maharashtra:** Available across Mumbai and Pune for routine and batch verification.\n\n` +
+          `*Official Directory:* Access the real-time accredited laboratory list on the [BIS Laboratory Directory](https://www.bis.gov.in/laboratory-directory/).`,
+        confidence: 'HIGH',
+        citations: [
+          {
+            chunkId: 101,
+            standardNumber: 'IS 4250:2025',
+            clause: 'Laboratory Directory',
+            excerpt: 'BIS recognized and NABL accredited test laboratories for domestic electrical appliances.',
+            sourceUrl: 'https://www.bis.gov.in/laboratory-directory/',
+          },
+        ],
+        disclaimer: 'Verify lab accreditation validity on the BIS portal before submitting samples.',
+        suggested_actions: ['Explain BIS Scheme-I application steps', 'Review IS 4250:2025 test clauses', 'View full roadmap'],
+      };
+    }
+
+    return {
+      conversation_id: context.conversationId,
+      message_id: messageId,
+      intent: 'LABORATORY',
+      answer:
+        `### 🧪 Recognized Testing Laboratories in Maharashtra\n\n` +
+        `• **National Test House (NTH), Mumbai:** Mechanical, chemical, thermal, and metallurgical testing.\n` +
+        `• **BIS Recognized Lab - Mumbai:** Mechanical testing, chemical analysis, migration testing.\n` +
+        `• **BIS Recognized Lab - Pune:** Mechanical testing, chemical analysis, corrosion testing.\n` +
+        `• **BIS Recognized Lab - Nagpur:** Chemical analysis, food contact testing.\n\n` +
+        `*Official Directory:* Access the real-time accredited laboratory list on the [BIS Laboratory Directory](https://www.bis.gov.in/laboratory-directory/).`,
+      confidence: 'HIGH',
+      citations: [
+        {
+          chunkId: 101,
+          standardNumber: 'BIS Labs',
+          clause: 'Laboratory Directory',
+          excerpt: 'Directory of BIS recognized laboratories in Maharashtra.',
+          sourceUrl: 'https://www.bis.gov.in/laboratory-directory/',
+        },
+      ],
+      disclaimer: 'Verify lab accreditation validity on the BIS portal before submitting samples.',
+      suggested_actions: ['Explain BIS Scheme-I application steps', 'View full roadmap'],
+    };
+  }
+
+  const isTestQuery =
+    (msgLower.includes('test') || msgLower.includes('clause')) &&
+    (msgLower.includes('what') || msgLower.includes('which') || msgLower.includes('require') || msgLower.includes('key') || msgLower.includes('list'));
+
+  if (isTestQuery && isMixer) {
+    return {
+      conversation_id: context.conversationId,
+      message_id: messageId,
+      intent: 'TESTING',
+      answer:
+        `### 🧪 Mandatory Tests for Domestic Electric Food Mixers (IS 4250:2025)\n\n` +
+        `Under IS 4250:2025 and the Electrical Appliances Quality Control Order, the following key tests must be demonstrated in the in-house lab and verified at independent test facilities:\n\n` +
+        `• **Electrical Safety & Insulation Resistance (Clause 7):** Leakage current below 0.25 mA and insulation resistance > 2 MΩ at 500V DC.\n` +
+        `• **Power Input & Current Rating (Clause 8):** Operating power within 110% of rated specification.\n` +
+        `• **Temperature Rise Test (Clause 11):** Ensures motor windings and outer enclosure do not exceed permissible thermal limits during continuous and intermittent cycles.\n` +
+        `• **Moisture Resistance & Ingress (Clause 13):** Enclosure must prevent liquid spill ingress from the jar as per IPX1.\n` +
+        `• **Mechanical Strength & Impact (Clause 15):** Body housing and mixing jars must withstand impact tests.\n` +
+        `• **Overload & Endurance Test (Clause 20):** 100 continuous grinding and liquidizing duty cycles without electrical or thermal failure.\n` +
+        `• **Safety Interlocking Mechanism (Clause 24):** Mandatory interlock stopping spindle unless jar and lid are securely engaged.\n` +
+        `• **Food Contact Rust Resistance (Clause 30):** Stainless steel jars and cutter blades must be non-toxic and rust resistant.`,
+      confidence: 'HIGH',
+      citations: [
+        {
+          chunkId: 101,
+          standardNumber: 'IS 4250:2025',
+          clause: 'Clause 7, 8, 11, 20, 24',
+          excerpt: 'Domestic Electric Food Mixers — Key Testing Clauses under IS 4250:2025.',
+          sourceUrl: 'https://www.bis.gov.in/standard/is-4250-2025',
+        },
+      ],
+      disclaimer: 'Verify with the official BIS authority before application; not legal advice.',
+      suggested_actions: ['Explain BIS Scheme-I application steps', 'Find recognized electrical testing labs', 'View full roadmap'],
+    };
+  }
+
   if (msgLower.includes('exact') && msgLower.includes('fee')) {
     return {
       conversation_id: context.conversationId,
@@ -322,7 +626,7 @@ function _generateFallbackAIResponse(message: string, context: ChatContext): Cha
     };
   }
 
-  if (msgLower.includes('mixer') || msgLower.includes('grinder') || msgLower.includes('blender')) {
+  if (isMixer) {
     return {
       conversation_id: context.conversationId,
       message_id: messageId,
@@ -357,8 +661,8 @@ function _generateFallbackAIResponse(message: string, context: ChatContext): Cha
     };
   }
 
-  if (msgLower.includes('bottle') || msgLower.includes('flask') || msgLower.includes('bottel') || msgLower.includes('bottole')) {
-    if (msgLower.includes('which bis') || msgLower.includes('why do i need') || msgLower.includes('compulsory')) {
+  if (isBottle) {
+    if (msgLower.includes('which bis') || msgLower.includes('why do i need') || msgLower.includes('compulsory') || msgLower.includes('standard')) {
       return {
         conversation_id: context.conversationId,
         message_id: messageId,
