@@ -100,13 +100,55 @@ export async function processChatMessage(
           .limit(1);
 
         const bizName = biz?.businessName || 'your business';
+
+        const phasesMap: Record<string, string[]> = {
+          'Phase 1: Business Setup': [],
+          'Phase 2: Tax Registration': [],
+          'Phase 3: Local & Premises Approvals': [],
+          'Phase 4: BIS Product Certification': [],
+          'Phase 5: Sales & Packaging': [],
+        };
+
+        const phaseKeyMap: Record<string, string> = {
+          SETUP: 'Phase 1: Business Setup',
+          TAX: 'Phase 2: Tax Registration',
+          LOCAL: 'Phase 3: Local & Premises Approvals',
+          BIS: 'Phase 4: BIS Product Certification',
+          SALES: 'Phase 5: Sales & Packaging',
+        };
+
+        for (const s of steps) {
+          const groupName = phaseKeyMap[(s.phase || 'SETUP').toUpperCase()] || 'Phase 1: Business Setup';
+          const url = s.payload?.applyUrl || s.payload?.sourceUrl || 'https://www.bis.gov.in/';
+          let statusBadge = '';
+          if (s.status === 'COMPLETED') statusBadge = ' `[Completed]`';
+          else if (s.status === 'NEEDS_VERIFICATION') statusBadge = ' `[Needs Verification]`';
+          else if (s.requirementId === 'bis_scheme_application') statusBadge = ' `[Locked until Steps 9, 10, 11]`';
+
+          const linkMd = url ? `[Official Portal Link](${url})` : '[Official Portal](https://www.bis.gov.in/)';
+          phasesMap[groupName].push(
+            `**Step ${s.stepOrder}: ${s.title}**${statusBadge}\n` +
+            `• *Requirement / Scope:* ${s.reason}\n` +
+            `• *Official Link:* ${linkMd}`
+          );
+        }
+
+        const formattedPhases = Object.entries(phasesMap)
+          .filter(([_, items]) => items.length > 0)
+          .map(([phaseTitle, items]) => `### ${phaseTitle}\n\n` + items.join('\n\n'))
+          .join('\n\n---\n\n');
+
         const answer =
           `Your personalized compliance roadmap for **${bizName}** has been generated!\n\n` +
           `• **13 Total Steps:** Organized sequentially across Setup, Tax, Local, BIS, and Sales phases.\n` +
           `• **Business Setup:** Structure choice is confirmed. Follow with PAN and Udyam (MSME) registration.\n` +
           `• **BIS Product Compliance (Steps 8–12):** Mandatory Indian Standard identified (IS 17526:2021). Follow with required tests and accredited lab selection in Maharashtra.\n` +
           `• **Dependency Locking:** Step 12 (Apply for BIS Licence) is locked until testing and laboratory selection steps are complete.\n\n` +
-          `Click on any step or open the roadmap below to view document checklists, official links, and start tracking your compliance.`;
+          `---\n\n` +
+          `### 📋 Detailed 13-Step Action Plan & Official Portal Links\n\n` +
+          formattedPhases +
+          `\n\n---\n\n` +
+          `*Click on any step or use the roadmap view to track completion, download forms, and inspect document checklists.*`;
 
         const response: ChatResponse = {
           conversationId: context.conversationId,
@@ -191,6 +233,78 @@ export async function processChatMessage(
 function _generateFallbackAIResponse(message: string, context: ChatContext): ChatAIResponse {
   const msgLower = message.toLowerCase();
   const messageId = generateId();
+
+  if (msgLower.includes('all steps') || (msgLower.includes('step') && msgLower.includes('link')) || msgLower.includes('give me all steps') || msgLower.includes('show all steps')) {
+    return {
+      conversation_id: context.conversationId,
+      message_id: messageId,
+      intent: 'ROADMAP',
+      answer:
+        `### 📋 Complete 13-Step Action Plan & Official Portal Links\n\n` +
+        `### Phase 1: Business Setup\n\n` +
+        `**Step 1: Choose Business Structure** \`[Completed]\`\n` +
+        `• *Action:* Register Private Limited Company, LLP, or Partnership as chosen.\n` +
+        `• *Official Portal Link:* [Ministry of Corporate Affairs (MCA)](https://www.mca.gov.in/)\n\n` +
+        `**Step 2: Apply for Company / Entity PAN**\n` +
+        `• *Action:* Permanent Account Number application for taxation and banking.\n` +
+        `• *Official Portal Link:* [Income Tax e-Filing Portal](https://incometax.gov.in/)\n\n` +
+        `**Step 3: Udyam (MSME) Registration**\n` +
+        `• *Action:* Zero-cost MSME certification for manufacturing concessions & fee subsidies.\n` +
+        `• *Official Portal Link:* [Udyam Registration Portal](https://udyamregistration.gov.in/)\n\n` +
+        `---\n\n` +
+        `### Phase 2: Tax Registration\n\n` +
+        `**Step 4: Goods and Services Tax (GST) Registration** \`[Needs Verification]\`\n` +
+        `• *Action:* Mandatory for interstate supply of goods and turnover thresholds.\n` +
+        `• *Official Portal Link:* [GST Official Portal](https://www.gst.gov.in/)\n\n` +
+        `**Step 5: Maharashtra Professional Tax (PTEC / PTRC)** \`[Needs Verification]\`\n` +
+        `• *Action:* State tax registration for establishment and employee deductions.\n` +
+        `• *Official Portal Link:* [MahaGST Portal](https://mahagst.gov.in/)\n\n` +
+        `---\n\n` +
+        `### Phase 3: Local & Premises Approvals\n\n` +
+        `**Step 6: Factory Licence / Shops & Establishment Registration** \`[Needs Verification]\`\n` +
+        `• *Action:* Factory premises licence or local municipal registration in Mumbai.\n` +
+        `• *Official Portal Link:* [Aaple Sarkar / Maharashtra Labour Department](https://lms.mahaonline.gov.in/)\n\n` +
+        `**Step 7: MPCB Consent to Establish (CTE)** \`[Needs Verification]\`\n` +
+        `• *Action:* Pollution control board consent for emissions and effluent compliance.\n` +
+        `• *Official Portal Link:* [Maharashtra Pollution Control Board (MPCB)](https://mpcb.gov.in/)\n\n` +
+        `---\n\n` +
+        `### Phase 4: BIS Product Certification\n\n` +
+        `**Step 8: Identify Applicable Indian Standard (IS 17526:2021 / IS 4250:2025)**\n` +
+        `• *Action:* Vacuum insulated bottles (IS 17526:2021) or electric food mixers (IS 4250:2025).\n` +
+        `• *Official Portal Link:* [Bureau of Indian Standards](https://www.bis.gov.in/)\n\n` +
+        `**Step 9: Confirm BIS Certification Requirement (Quality Control Order)**\n` +
+        `• *Action:* Mandatory certification under DPIIT / Ministry Quality Control Orders.\n` +
+        `• *Official Portal Link:* [DPIIT QCO Order Portal](https://dpiit.gov.in/)\n\n` +
+        `**Step 10: Identify Required Tests from Standard Clauses**\n` +
+        `• *Action:* Thermal retention (Cl. 5.2), vacuum leakage (Cl. 5.3), drop test (Cl. 6.1), and migration test (Cl. 7.2 as per IS 9845).\n` +
+        `• *Official Portal Link:* [BIS Test Guidelines](https://www.bis.gov.in/)\n\n` +
+        `**Step 11: Find Recognized Testing Labs in Maharashtra**\n` +
+        `• *Action:* National Test House (Mumbai), BIS Recognized Labs in Pune & Nagpur.\n` +
+        `• *Official Portal Link:* [BIS Laboratory Directory](https://www.bis.gov.in/laboratory-directory/)\n\n` +
+        `**Step 12: Apply for BIS Licence (ISI Mark Scheme-I)** \`[Locked until Steps 9, 10, 11 completed]\`\n` +
+        `• *Action:* Form V application on Manakonline with factory inspection booking and test reports.\n` +
+        `• *Official Portal Link:* [Manakonline BIS Licensing Portal](https://www.manakonline.in/)\n\n` +
+        `---\n\n` +
+        `### Phase 5: Sales & Packaging\n\n` +
+        `**Step 13: Legal Metrology Packaged Commodities Registration** \`[Needs Verification]\`\n` +
+        `• *Action:* Mandatory packaging declarations under Legal Metrology Rules.\n` +
+        `• *Official Portal Link:* [Department of Consumer Affairs](https://consumeraffairs.nic.in/)\n\n` +
+        `---\n\n` +
+        `*Click on any step or use the roadmap view to track completion, download forms, and inspect document checklists.*`,
+      confidence: 'HIGH',
+      citations: [
+        {
+          chunkId: 201,
+          standardNumber: 'IS 17526:2021',
+          clause: 'Clause 5.2 & 7.2',
+          excerpt: 'Domestic Stainless Steel Vacuum Flasks and Insulated Bottles — Specification.',
+          sourceUrl: 'https://www.bis.gov.in/standard/is-17526-2021',
+        },
+      ],
+      disclaimer: 'Verify requirements with official authorities; not legal advice.',
+      suggested_actions: ['View full roadmap', 'Find labs in Maharashtra', 'Review BIS standard IS 17526:2021'],
+    };
+  }
 
   if (msgLower.includes('exact') && msgLower.includes('fee')) {
     return {
