@@ -1,0 +1,6 @@
+name,state,city,capabilities,contact,source_url,last_verified_at
+BIS Recognized Lab - Mumbai,Maharashtra,Mumbai,"[""Mechanical Testing"", ""Chemical Analysis"", ""Migration Testing""]","{""phone"": ""022-12345678"", ""email"": ""lab@mumbai.in""}",https://www.bis.gov.in/,2024-01-15
+BIS Recognized Lab - Pune,Maharashtra,Pune,"[""Mechanical Testing"", ""Chemical Analysis"", ""Corrosion Testing""]","{""phone"": ""020-87654321"", ""email"": ""lab@pune.in""}",https://www.bis.gov.in/,2024-01-15
+BIS Recognized Lab - Nagpur,Maharashtra,Nagpur,"[""Chemical Analysis"", ""Food Contact Testing""]","{""phone"": ""0712-11223344"", ""email"": ""lab@nagpur.in""}",https://www.bis.gov.in/,2024-01-15
+Central Institute of Plastics Engineering & Technology (CIPET),Gujarat,Ahmedabad,"[""Plastic Testing"", ""Migration Testing"", ""Mechanical Testing""]","{""phone"": ""079-12345678"", ""email"": ""info@cipet.gov.in""}",https://www.bis.gov.in/,2024-01-15
+National Test House (NTH),Maharashtra,Mumbai,"[""Mechanical Testing"", ""Chemical Analysis"", ""Metallurgical Testing""]","{""phone"": ""022-87654321"", ""email"": ""nth@mumbai.gov.in""}",https://www.bis.gov.in/,2024-01-15

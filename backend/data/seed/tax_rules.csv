@@ -1,0 +1,4 @@
+level,state,tax_name,applies_when,rate_or_note,threshold,source_url,last_verified_at
+State,Maharashtra,Professional Tax,"{""employeeCount"": {""gte"": 1}}","₹2,500 per year per employer",null,https://mahagst.gov.in/,2024-01-15
+Central,,GST,"{""any"": [{""field"": ""expectedTurnover"", ""op"": ""gte"", ""value"": 4000000}, {""field"": ""businessType"", ""op"": ""eq"", ""value"": ""online_seller""}]}","18% standard rate (varies by product)","{""goods"": 4000000, ""services"": 2000000}",https://www.gst.gov.in/,2024-01-15
+State,Maharashtra,Stamp Duty,"{""field"": ""businessType"", ""op"": ""in"", ""value"": [""partnership"", ""llp"", ""private_limited""]}","Varies by document type and value",null,https://igrmaharashtra.gov.in/,2024-01-15

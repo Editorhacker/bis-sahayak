@@ -1,0 +1,15 @@
+requirement_id,amount,currency,condition,note,source_url,last_verified_at
+business_structure_choice,0,INR,,No fee for choosing structure,https://www.mca.gov.in/,2024-01-15
+pan,107,INR,,PAN application fee (online),https://www.onlineservices.nsdl.com/,2024-01-15
+udyam_registration,0,INR,,Udyam registration is free,https://udyamregistration.gov.in/,2024-01-15
+gst_registration,0,INR,,GST registration is free,https://www.gst.gov.in/,2024-01-15
+maharashtra_professional_tax,2500,INR,"{""employeeCount"": {""gte"": 1}}",Annual professional tax for employer,https://mahagst.gov.in/,2024-01-15
+premises_licence_maharashtra,0,INR,,Fee varies by premises type and area,https://mahaonline.gov.in/,2024-01-15
+mumbai_trade_licence,0,INR,,Fee varies by trade category and area,https://portal.mcgm.gov.in/,2024-01-15
+pollution_control_consent,0,INR,,Fee varies by industry category and capital investment,https://mpcb.gov.in/,2024-01-15
+bis_standard_identification,0,INR,,No fee for standard identification,https://www.bis.gov.in/,2024-01-15
+bis_certification_check,0,INR,,No fee for checking certification requirement,https://www.bis.gov.in/,2024-01-15
+bis_testing,0,INR,,Test fees vary by lab and test parameters,https://www.bis.gov.in/,2024-01-15
+bis_lab_search,0,INR,,No fee for lab search,https://www.bis.gov.in/,2024-01-15
+bis_scheme_application,10000,INR,,BIS application fee (indicative),https://www.bis.gov.in/,2024-01-15
+legal_metrology_packaged_goods,0,INR,,Fee varies by state and product,https://consumeraffairs.nic.in/,2024-01-15

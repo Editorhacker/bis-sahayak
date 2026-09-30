@@ -1,0 +1,190 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Base colors */
+    --background: 0 0% 100%;
+    --foreground: 222.2 84% 4.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 222.2 84% 4.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222.2 84% 4.9%;
+    --primary: 199 89% 48%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 40% 96.1%;
+    --secondary-foreground: 222.2 47.4% 11.2%;
+    --muted: 210 40% 96.1%;
+    --muted-foreground: 215.4 16.3% 46.9%;
+    --accent: 210 40% 96.1%;
+    --accent-foreground: 222.2 47.4% 11.2%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214.3 31.8% 91.4%;
+    --input: 214.3 31.8% 91.4%;
+    --ring: 199 89% 48%;
+    --radius: 0.5rem;
+
+    /* Status colors - semantic */
+    --status-not-started: 215 16% 47%;
+    --status-in-progress: 199 89% 48%;
+    --status-completed: 142 76% 36%;
+    --status-not-applicable: 215 16% 47%;
+    --status-needs-verification: 38 92% 50%;
+
+    /* Confidence colors */
+    --confidence-high: 142 76% 36%;
+    --confidence-medium: 199 89% 48%;
+    --confidence-low: 38 92% 50%;
+    --confidence-insufficient: 215 16% 47%;
+
+    /* Priority colors */
+    --priority-low: 215 16% 47%;
+    --priority-medium: 199 89% 48%;
+    --priority-high: 38 92% 50%;
+    --priority-critical: 0 84% 60%;
+  }
+
+  .dark {
+    --background: 222.2 84% 4.9%;
+    --foreground: 210 40% 98%;
+    --card: 222.2 84% 4.9%;
+    --card-foreground: 210 40% 98%;
+    --popover: 222.2 84% 4.9%;
+    --popover-foreground: 210 40% 98%;
+    --primary: 199 89% 48%;
+    --primary-foreground: 222.2 47.4% 11.2%;
+    --secondary: 217.2 32.6% 17.5%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 217.2 32.6% 17.5%;
+    --muted-foreground: 215 20.2% 65.1%;
+    --accent: 217.2 32.6% 17.5%;
+    --accent-foreground: 210 40% 98%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 217.2 32.6% 17.5%;
+    --input: 217.2 32.6% 17.5%;
+    --ring: 199 89% 48%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  @apply bg-muted;
+}
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/30 rounded-full;
+}
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/50;
+}
+
+/* Markdown styles */
+.prose {
+  @apply text-foreground;
+}
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  @apply font-semibold text-foreground;
+}
+.prose code {
+  @apply bg-muted px-1.5 py-0.5 rounded text-sm font-mono;
+}
+.prose pre {
+  @apply bg-muted p-4 rounded-lg overflow-x-auto;
+}
+.prose pre code {
+  @apply bg-transparent p-0 text-sm;
+}
+.prose a {
+  @apply text-primary underline underline-offset-2 hover:no-underline;
+}
+.prose blockquote {
+  @apply border-l-4 border-primary pl-4 italic text-muted-foreground;
+}
+.prose ul, .prose ol {
+  @apply pl-6;
+}
+.prose li {
+  @apply mb-1;
+}
+.prose table {
+  @apply w-full border-collapse;
+}
+.prose th, .prose td {
+  @apply border border-border p-2 text-left;
+}
+
+/* Focus visible for keyboard navigation */
+*:focus-visible {
+  @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Prevent text selection on buttons during drag */
+button, [role="button"] {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Animation utilities */
+.animate-in {
+  animation: animateIn 0.2s ease-out;
+}
+@keyframes animateIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.slide-in-right {
+  animation: slideInRight 0.25s ease-out;
+}
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* Leaflet map container fix */
+.leaflet-container {
+  @apply rounded-lg;
+  font-family: inherit;
+}
+
+/* Recharts tooltip */
+.recharts-tooltip-wrapper {
+  @apply bg-card border border-border rounded-lg shadow-lg p-3;
+}

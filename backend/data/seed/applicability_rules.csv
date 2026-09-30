@@ -1,0 +1,15 @@
+requirement_id,conditions,applicability
+business_structure_choice,"{""all"": [{""field"": ""businessType"", ""op"": ""in"", ""value"": [""manufacturing"", ""trading"", ""online_seller"", ""service""]}]}",REQUIRED
+pan,"{""all"": [{""field"": ""businessType"", ""op"": ""in"", ""value"": [""manufacturing"", ""trading"", ""online_seller"", ""service""]}]}",REQUIRED
+udyam_registration,"{""all"": [{""field"": ""businessType"", ""op"": ""in"", ""value"": [""manufacturing"", ""trading"", ""online_seller"", ""service""]}]}",REQUIRED
+gst_registration,"{""any"": [{""field"": ""expectedTurnover"", ""op"": ""gte"", ""value"": 4000000}, {""field"": ""businessType"", ""op"": ""eq"", ""value"": ""online_seller""}]}",CONDITIONAL
+maharashtra_professional_tax,"{""all"": [{""field"": ""state"", ""op"": ""eq"", ""value"": ""Maharashtra""}, {""field"": ""employeeCount"", ""op"": ""gte"", ""value"": 1}]}",REQUIRED
+premises_licence_maharashtra,"{""all"": [{""field"": ""state"", ""op"": ""eq"", ""value"": ""Maharashtra""}, {""field"": ""premisesType"", ""op"": ""in"", ""value"": [""shop"", ""factory_unit"", ""warehouse""]}]}",REQUIRED
+mumbai_trade_licence,"{""all"": [{""field"": ""city"", ""op"": ""eq"", ""value"": ""Mumbai""}]}",REQUIRED
+pollution_control_consent,"{""all"": [{""field"": ""state"", ""op"": ""eq"", ""value"": ""Maharashtra""}, {""field"": ""businessType"", ""op"": ""eq"", ""value"": ""manufacturing""}]}",VERIFY
+bis_standard_identification,"{""all"": [{""field"": ""businessType"", ""op"": ""eq"", ""value"": ""manufacturing""}]}",REQUIRED
+bis_certification_check,"{""all"": [{""field"": ""businessType"", ""op"": ""eq"", ""value"": ""manufacturing""}]}",REQUIRED
+bis_testing,"{""all"": [{""field"": ""businessType"", ""op"": ""eq"", ""value"": ""manufacturing""}]}",REQUIRED
+bis_lab_search,"{""all"": [{""field"": ""businessType"", ""op"": ""eq"", ""value"": ""manufacturing""}]}",REQUIRED
+bis_scheme_application,"{""all"": [{""field"": ""businessType"", ""op"": ""eq"", ""value"": ""manufacturing""}]}",REQUIRED
+legal_metrology_packaged_goods,"{""all"": [{""field"": ""businessType"", ""op"": ""in"", ""value"": [""manufacturing"", ""trading"", ""online_seller""]}]}",CONDITIONAL
