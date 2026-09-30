@@ -1,5 +1,5 @@
 import { db, schema } from '../../db/index.js';
-import { eq, and, inArray, desc } from 'drizzle-orm';
+import { eq, and, inArray, desc, or, ilike } from 'drizzle-orm';
 import { generateId } from '../../utils/helpers.js';
 import { formatDate } from '../../utils/typeGuards.js';
 export interface RetrievalResult {
@@ -332,7 +332,7 @@ async function findStandardChunks(query: string, limit = 5): Promise<RetrievalRe
   const whereClause = terms.length > 0
     ? and(
         eq(schema.documents.docType, 'standard'),
-        or(...terms.map(t => ilike(schema.chunks.content, `%${t}%`)))
+        or(...terms.map((t: string) => ilike(schema.chunks.content, `%${t}%`)))
       )
     : eq(schema.documents.docType, 'standard');
 
