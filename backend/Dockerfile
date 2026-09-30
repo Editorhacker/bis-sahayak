@@ -31,10 +31,14 @@ RUN apk add --no-cache python3 make g++ \
     && adduser  -S appuser -G appgroup
 
 COPY package*.json ./
-# Production deps only
-RUN npm ci --omit=dev
+# Install ALL deps so db:seed (tsx) and db:push (drizzle-kit) work in the container
+RUN npm ci
 
 COPY --from=builder /app/dist ./dist
+# Copy source for tsx-based scripts (seed.ts, etc.)
+COPY tsconfig.json ./
+COPY server ./server
+COPY data ./data
 
 RUN chown -R appuser:appgroup /app
 USER appuser
