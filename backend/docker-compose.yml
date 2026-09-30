@@ -110,7 +110,7 @@ services:
       NODE_ENV: production
       PORT: 3000
       HOST: 0.0.0.0
-      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:postgres@postgres:5432/business_saarthi}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://postgres:123456@postgres:5432/business_saarthi}
 
       # Auth
       JWT_SECRET: ${JWT_SECRET}

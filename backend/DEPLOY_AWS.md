@@ -52,7 +52,7 @@ docker compose version   # should print v2.x
 # On EC2
 sudo mkdir -p /opt/saarthi
 sudo chown $USER:$USER /opt/saarthi
-git clone <your-repo> /opt/saarthi
+git clone https://github.com/Editorhacker/bis-sahayak.git /opt/saarthi
 cd /opt/saarthi/backend
 
 # Copy and fill in secrets
