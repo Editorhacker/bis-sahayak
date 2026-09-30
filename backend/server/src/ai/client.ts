@@ -118,7 +118,6 @@ export function callChatAI(payload: {
   user_id: string;
   business_id?: string;
   language?: string;
-  history?: Array<{ role: string; content: string }>;
 }): Promise<ChatAIResponse> {
   return aiPost<ChatAIResponse>('/chat', payload);
 }

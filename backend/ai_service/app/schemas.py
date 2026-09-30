@@ -57,18 +57,12 @@ class EmbedResponse(BaseModel):
 
 # ── Chat ──────────────────────────────────────────────────────────────────────
 
-class HistoryItem(BaseModel):
-    role: str
-    content: str
-
-
 class ChatRequest(BaseModel):
     message: str = Field(..., min_length=1, max_length=4000)
     conversation_id: str
     user_id: str
     business_id: str | None = None
     language: str = "en"
-    history: list[HistoryItem] = []
 
 
 class Citation(BaseModel):

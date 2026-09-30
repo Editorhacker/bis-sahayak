@@ -13,13 +13,12 @@ TypeScript backend calls this instead of doing LLM work itself.
 from __future__ import annotations
 
 import logging
-import re
 import uuid
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from app.schemas import ChatRequest, ChatResponse, Citation, HistoryItem
+from app.schemas import ChatRequest, ChatResponse, Citation
 from app.prompts import ANALYZER_PROMPT, ANSWER_GENERATOR_PROMPT
 from app.ollama_client import generate_json, generate_text
 from app.retrieval import (
@@ -42,24 +41,6 @@ _ROADMAP_INTENTS = {
     "BUSINESS_SETUP", "BUSINESS_REGISTRATION",
     "TAX_REQUIREMENT", "LICENSE_REQUIREMENT", "ROADMAP",
 }
-
-
-def _extract_product_context(message: str, history: list[HistoryItem]) -> str | None:
-    msg_lower = message.lower()
-    if any(k in msg_lower for k in ["mixer", "grinder", "blender", "4250", "liquidizer", "juicer"]):
-        return "electric_food_mixer"
-    if any(k in msg_lower for k in ["bottle", "flask", "17526", "insulated bottle"]):
-        return "stainless_steel_bottle"
-
-    for h in reversed(history):
-        c_lower = h.content.lower()
-        if any(k in c_lower for k in ["mixer", "grinder", "blender", "4250", "liquidizer", "juicer"]):
-            return "electric_food_mixer"
-        if any(k in c_lower for k in ["bottle", "flask", "17526", "insulated bottle"]):
-            return "stainless_steel_bottle"
-
-    return None
-
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -111,49 +92,14 @@ async def chat(req: ChatRequest) -> ChatResponse:
             profile_card=flat_profile,
         )
 
-    # Fetch history if not provided in req
-    history_messages = list(req.history or [])
-    if not history_messages and req.conversation_id:
-        try:
-            pool = get_pool()
-            rows = await pool.fetch(
-                "SELECT role, content FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 8",
-                uuid.UUID(req.conversation_id) if isinstance(req.conversation_id, str) and "-" in req.conversation_id else req.conversation_id,
-            )
-            history_messages = [HistoryItem(role=r["role"], content=r["content"]) for r in reversed(rows)]
-        except Exception as db_err:
-            logger.warning("Could not fetch messages from DB: %s", db_err)
-
-    product_context = _extract_product_context(req.message, history_messages)
-    msg_lower = req.message.lower()
-
     # Step 3 – Route
-    is_scheme_query = any(k in msg_lower for k in [
-        "scheme-i", "scheme 1", "scheme i", "scheme-1",
-        "application step", "application procedure", "how to apply",
-        "apply for bis", "licence step", "licensing step", "application process",
-        "apply for a bis licence", "apply for bis licence"
-    ]) or ("scheme" in msg_lower and any(k in msg_lower for k in ["step", "explain", "apply", "process", "licence"]))
-
-    if is_scheme_query:
-        return await _scheme_handler(req, message_id, product_context, language)
-
+    msg_lower = req.message.lower()
     if intent == "FEES" or "exact bis licence fee" in msg_lower or ("fee" in msg_lower and "licence" in msg_lower):
         return await _fees_handler(req, message_id)
-    elif intent == "LABORATORY" or "lab" in msg_lower or "where to test" in msg_lower:
-        return await _labs_handler(req, message_id, intent, analysis, language, product_context)
-    elif (
-        intent in _BIS_INTENTS
-        or "standard" in msg_lower
-        or "bis" in msg_lower
-        or "is 4250" in msg_lower
-        or "is 17526" in msg_lower
-        or "mixer" in msg_lower
-        or "bottle" in msg_lower
-        or "test" in msg_lower
-        or product_context is not None
-    ):
-        return await _bis_handler(req, message_id, intent, analysis, language, product_context)
+    elif intent in _BIS_INTENTS or "standard" in msg_lower or "bis" in msg_lower or "is 4250" in msg_lower or "is 17526" in msg_lower or "mixer" in msg_lower or "bottle" in msg_lower:
+        return await _bis_handler(req, message_id, intent, analysis, language)
+    elif intent == "LABORATORY" or "lab" in msg_lower:
+        return await _labs_handler(req, message_id, intent, analysis, language)
     else:
         return await _general_handler(req, message_id, intent, language)
 
@@ -161,164 +107,6 @@ async def chat(req: ChatRequest) -> ChatResponse:
 # ─────────────────────────────────────────────────────────────────────────────
 # Handlers
 # ─────────────────────────────────────────────────────────────────────────────
-
-async def _scheme_handler(
-    req: ChatRequest,
-    message_id: str,
-    product_context: str | None,
-    language: str,
-) -> ChatResponse:
-    if product_context == "electric_food_mixer":
-        ans = (
-            "### 📋 BIS Scheme-I (ISI Mark) Application Steps for Electric Food Mixers (IS 4250:2025)\n\n"
-            "Domestic electric food mixers, liquidizers, and grinders fall under **mandatory BIS certification** "
-            "under Scheme-I of Schedule-II of the BIS (Conformity Assessment) Regulations, 2018, pursuant to the "
-            "Electrical Appliances Quality Control Order issued by the Ministry of Heavy Industries.\n\n"
-            "Here is the complete step-by-step application procedure to obtain your BIS Licence (ISI Mark):\n\n"
-            "#### **Step 1: Set Up In-House Testing Laboratory (IS 4250:2025 Clauses 7, 8, 11, 13, 15, 20 & 24)**\n"
-            "*Under Scheme-I, the manufacturer MUST establish an operational in-house testing facility at the factory premises with calibrated instruments before applying.*\n"
-            "• **Electrical Safety & Insulation (Clause 7):** Leakage current meter (limit < 0.25 mA) and 500V DC megohmmeter (insulation resistance > 2 MΩ).\n"
-            "• **Dielectric High Voltage Flash Tester:** 1000V/1500V AC testing bench.\n"
-            "• **Power Input & Current Measurement (Clause 8):** Digital power analyzer/wattmeter (power within 110% of rated capacity).\n"
-            "• **Temperature Rise Test Bench (Clause 11):** Multi-channel temperature recorder and thermocouples for motor windings and housing surfaces.\n"
-            "• **Safety Interlock Testing Rig (Clause 24):** Mechanism verifying spindle stops immediately unless jar and lid are securely engaged.\n"
-            "• **Overload & Endurance Rig (Clause 20):** Automated duty-cycle test rig for 100 continuous grinding cycles.\n\n"
-            "#### **Step 2: Prepare Quality Management Documentation**\n"
-            "• **Technical Dossier & Quality Manual:** Manufacturing process flow chart, raw material inspection plan, and quality manual.\n"
-            "• **Equipment Calibration:** Valid calibration certificates traceable to NABL/national standards for all in-house test equipment.\n"
-            "• **Component Test Certificates:** Evidence of conformity for critical components (BIS-certified ISI-marked power cords as per IS 694, switches as per IS 3854, plugs as per IS 1293).\n"
-            "• **Food Contact Declaration:** Mill test certificates verifying Grade 304 stainless steel for jars and blades (Clause 30).\n"
-            "• **Competent Quality Personnel:** Appointment of a qualified quality control engineer/testing technician.\n\n"
-            "#### **Step 3: Online Application Submission on Manakonline (Form V)**\n"
-            "• Register your manufacturing unit on the official BIS portal: [Manakonline Portal](https://www.manakonline.in/).\n"
-            "• Fill out **Form V** (Application for Grant of Licence under Scheme-I).\n"
-            "• Upload factory registration, list of manufacturing machinery, in-house testing equipment with calibration dates, plant layout, and acceptance of the BIS Scheme of Inspection and Testing (SIT).\n"
-            "• Pay the statutory BIS application fee (₹1,000 for Micro/Small MSMEs with 50% concession under Udyam, ₹2,000 standard).\n\n"
-            "#### **Step 4: Factory Audit & Preliminary Inspection by BIS Technical Auditor**\n"
-            "• A BIS inspecting officer visits your manufacturing plant to:\n"
-            "  - Inspect production machinery, assembly lines, and hygiene standards.\n"
-            "  - Inspect in-house test facilities and review instrument calibration records.\n"
-            "  - Assess the competency of quality control staff.\n"
-            "  - Witness live demonstration of routine tests (electrical insulation, leakage current, power input, and safety interlock cut-off).\n\n"
-            "#### **Step 5: Sample Drawing & Independent Laboratory Testing**\n"
-            "• The BIS auditor draws representative production samples of the food mixer from the factory.\n"
-            "• Samples are sealed and forwarded to a BIS-recognized / NABL-accredited independent laboratory (e.g. National Test House, ERDA, or CPRI).\n"
-            "• Complete type testing is conducted against all clauses of **IS 4250:2025**.\n"
-            "• Third-party testing charges are paid directly to the testing laboratory.\n\n"
-            "#### **Step 6: Grant of BIS Licence & ISI Mark Authorization**\n"
-            "• Upon satisfactory factory inspection and passing independent test reports, BIS approves the licence.\n"
-            "• BIS issues the **Certificate of Conformity & Licence (CM/L Number)**.\n"
-            "• You are authorized to affix the **Standard ISI Mark** with **IS 4250** and your unique CM/L licence number on the food mixer rating plate, body, packaging, and user manuals.\n"
-            "• Initial validity is 1 to 2 years, renewable upon payment of marking fees and compliance with periodic surveillance audits."
-        )
-        citations = [
-            Citation(
-                chunkId=101,
-                standardNumber="IS 4250:2025",
-                clause="Scheme-I & Clause 7, 24",
-                excerpt="Domestic Electric Food Mixers — Mandatory ISI Mark Certification under Scheme-I of Schedule-II of BIS Conformity Assessment Regulations, 2018.",
-                sourceUrl="https://www.manakonline.in/",
-            )
-        ]
-        suggested = [
-            "Find recognized electrical testing labs",
-            "Review IS 4250:2025 test clauses",
-            "View full roadmap",
-        ]
-    elif product_context == "stainless_steel_bottle":
-        ans = (
-            "### 📋 BIS Scheme-I (ISI Mark) Application Steps for Stainless Steel Water Bottles (IS 17526:2021)\n\n"
-            "Domestic stainless steel vacuum flasks and insulated bottles fall under **mandatory BIS certification** "
-            "under Scheme-I pursuant to the Quality Control Order issued by the Ministry of Commerce and Industry (DPIIT).\n\n"
-            "Here is the complete step-by-step application procedure to obtain your BIS Licence (ISI Mark):\n\n"
-            "#### **Step 1: Set Up In-House Testing Laboratory (IS 17526:2021 Clauses 5.2, 5.3, 6.1, 6.4 & 7.2)**\n"
-            "*Under Scheme-I, the manufacturer MUST set up an in-house laboratory at the factory premises with calibrated instruments before applying.*\n"
-            "• **Thermal Performance Test Bench (Clause 5.2):** Calibrated digital temperature probes and controlled ambient chamber to verify heat retention (min 60°C after 6 hours from 95°C) and cold retention (< 10°C after 6 hours from 4°C).\n"
-            "• **Vacuum Leakage & Seal Rig (Clause 5.3):** Vacuum testing chamber/thermal shock tank verifying vacuum integrity without sweat condensation.\n"
-            "• **Impact & Drop Resistance Rig (Clause 6.1):** 1-metre drop test apparatus onto concrete slab for water-filled bottles.\n"
-            "• **Handle & Stopper Torque Rig (Clause 6.4):** Apparatus for 1,000 open/close cyclic torque tests without thread stripping.\n"
-            "• **Food Contact Migration Testing Setup (Clause 7.2 as per IS 9845):** Testing of silicone seals and stainless steel food contact surfaces.\n\n"
-            "#### **Step 2: Prepare Quality Management Documentation**\n"
-            "• **Quality Manual & Flowchart:** Deep drawing, seam welding, vacuum furnace brazing/evacuation, and polishing processes.\n"
-            "• **Raw Material Compliance:** Mill test certificates proving food-grade austenitic stainless steel conforming to IS 6911 (Grade 304 / X04Cr19Ni9).\n"
-            "• **Equipment Calibration:** Valid NABL-traceable calibration certificates for thermal probes, pressure gauges, and drop rigs.\n"
-            "• **Appointment of Qualified QC Personnel.**\n\n"
-            "#### **Step 3: Online Application Submission on Manakonline (Form V)**\n"
-            "• Register on the official portal: [Manakonline Portal](https://www.manakonline.in/).\n"
-            "• Submit **Form V** (Application for Grant of Licence under Scheme-I).\n"
-            "• Upload factory layout, machinery list, test equipment list with calibration records, and SIT undertaking.\n"
-            "• Pay application fee (₹1,000 for Micro/Small MSMEs with Udyam, ₹2,000 standard).\n\n"
-            "#### **Step 4: Factory Audit & On-Site Inspection by BIS Officer**\n"
-            "• A BIS auditor visits the manufacturing premises to inspect vacuum evacuation ovens, verify quality processes, and witness live testing (drop test, thermal retention, vacuum seal).\n\n"
-            "#### **Step 5: Sample Drawing & Independent Lab Testing**\n"
-            "• The BIS auditor seals representative bottle samples and dispatches them to a BIS-recognized lab (e.g. National Test House, Mumbai).\n"
-            "• The independent lab conducts tests against IS 17526:2021 and food contact migration (IS 9845).\n\n"
-            "#### **Step 6: Grant of BIS Licence & ISI Mark Authorization**\n"
-            "• Upon passing test reports and audit approval, BIS issues the **Licence (CM/L Number)**.\n"
-            "• Affix the **ISI Mark** with **IS 17526:2021** and CM/L number on the bottle base, carton, and warranty card."
-        )
-        citations = [
-            Citation(
-                chunkId=201,
-                standardNumber="IS 17526:2021",
-                clause="Clause 5.2, 7.2 & 9",
-                excerpt="Domestic Stainless Steel Vacuum Flasks and Insulated Bottles — Specification and Scheme-I licensing requirements.",
-                sourceUrl="https://www.manakonline.in/",
-            )
-        ]
-        suggested = [
-            "Find labs in Maharashtra",
-            "Review BIS standard IS 17526:2021",
-            "View full roadmap",
-        ]
-    else:
-        ans = (
-            "### 📋 BIS Scheme-I (ISI Mark) Application Steps & Procedure\n\n"
-            "Under Scheme-I of Schedule-II of the BIS (Conformity Assessment) Regulations, 2018, manufacturing units must obtain a BIS Licence "
-            "to use the Standard Mark (ISI mark) before placing products covered under mandatory Quality Control Orders (QCOs) in the Indian market.\n\n"
-            "Here is the standard 6-step application procedure:\n\n"
-            "#### **Step 1: Identify Applicable Indian Standard & Set Up In-House Lab**\n"
-            "• Determine the applicable Indian Standard (e.g., IS 4250 for food mixers, IS 17526 for vacuum bottles).\n"
-            "• Establish an in-house testing facility equipped with all instruments required by the BIS Scheme of Inspection and Testing (SIT).\n"
-            "• Ensure all test instruments possess valid NABL-traceable calibration certificates.\n\n"
-            "#### **Step 2: Prepare Quality Management Documentation**\n"
-            "• Prepare Quality Manual, factory layout, manufacturing machinery list, raw material test certificates, and appoint qualified technical/testing personnel.\n\n"
-            "#### **Step 3: Submit Online Application (Form V) on Manakonline**\n"
-            "• Register on the official portal: [Manakonline Portal](https://www.manakonline.in/).\n"
-            "• Complete Form V under Scheme-I, upload technical documents and calibration records, and pay the application fee (50% concession for MSMEs under Udyam).\n\n"
-            "#### **Step 4: Preliminary Factory Audit by BIS Technical Auditor**\n"
-            "• A BIS officer visits the factory to inspect manufacturing controls, verify test equipment, and witness routine/acceptance tests conducted by the factory QC staff.\n\n"
-            "#### **Step 5: Sample Drawing & Independent Laboratory Testing**\n"
-            "• The auditor draws representative production samples, seals them, and dispatches them to a BIS-recognized / NABL-accredited independent laboratory for full conformity testing against the standard clauses.\n\n"
-            "#### **Step 6: Scrutiny & Grant of BIS Licence (ISI Mark)**\n"
-            "• Upon receipt of satisfactory inspection and lab test reports, BIS grants the Certificate of Conformity and issues a unique CM/L licence number authorizing use of the ISI Mark."
-        )
-        citations = [
-            Citation(
-                chunkId=1,
-                standardNumber="BIS Scheme-I",
-                clause="Schedule-II",
-                excerpt="BIS (Conformity Assessment) Regulations, 2018 — Scheme-I Conformity Assessment Procedure.",
-                sourceUrl="https://www.manakonline.in/",
-            )
-        ]
-        suggested = [
-            "Identify applicable BIS standard",
-            "Find recognized testing labs",
-            "View full roadmap",
-        ]
-
-    return ChatResponse(
-        conversation_id=req.conversation_id,
-        message_id=message_id,
-        intent="SCHEME",
-        answer=ans,
-        confidence="HIGH",
-        citations=citations,
-        disclaimer="Verify requirements with the official BIS authority before application; not legal advice.",
-        suggested_actions=suggested,
-    )
-
 
 async def _fees_handler(req: ChatRequest, message_id: str) -> ChatResponse:
     return ChatResponse(
@@ -343,7 +131,6 @@ async def _bis_handler(
     intent: str,
     analysis: dict,
     language: str,
-    product_context: str | None = None,
 ) -> ChatResponse:
     profile = analysis.get("profile", {})
     product = profile.get("product", {})
@@ -367,7 +154,7 @@ async def _bis_handler(
     )
 
     # Detailed handler for electric food mixer
-    if "mixer" in msg_lower or "blender" in msg_lower or "grinder" in msg_lower or product_context == "electric_food_mixer":
+    if "mixer" in msg_lower or "blender" in msg_lower or "grinder" in msg_lower:
         ans = (
             "For **domestic electric food mixers (liquidizers, blenders, grinders, and food processors)**, "
             "the applicable Indian Standard is **IS 4250:2025** — *Domestic Electric Food Mixers (Liquidizers and Grinders) and Centrifugal Juicers — Specification*.\n\n"
@@ -405,7 +192,7 @@ async def _bis_handler(
         )
 
     # Detailed handler for stainless steel water bottle
-    if "bottle" in msg_lower or "flask" in msg_lower or "water bottel" in msg_lower or product_context == "stainless_steel_bottle":
+    if "bottle" in msg_lower or "flask" in msg_lower or "water bottel" in msg_lower:
         ans = (
             "For a **vacuum insulated stainless steel bottle**, the retrieved material points to **IS 17526:2021**. "
             "A Quality Control Order from the Ministry of Commerce and Industry requires domestic stainless steel vacuum flasks and bottles to conform to IS 17526:2021, "
@@ -506,7 +293,6 @@ async def _labs_handler(
     intent: str,
     analysis: dict,
     language: str,
-    product_context: str | None = None,
 ) -> ChatResponse:
     profile = analysis.get("profile", {})
     state = profile.get("location", {}).get("state") or "Maharashtra"
@@ -517,22 +303,6 @@ async def _labs_handler(
         state,
     )
 
-    if product_context == "electric_food_mixer":
-        extra = (
-            "\n\n**Accredited Laboratories for IS 4250:2025 (Domestic Electric Food Mixers):**\n"
-            "• **National Test House (NTH), Mumbai / Western Region:** Comprehensive electrical safety, dielectric breakdown, temperature rise, and mechanical tests.\n"
-            "• **Central Power Research Institute (CPRI) / ERDA:** High voltage, thermal endurance, and duty cycle endurance testing.\n"
-            "• **BIS Recognized Electrical Testing Labs:** In Mumbai and Pune for routine and batch verification."
-        )
-    elif product_context == "stainless_steel_bottle":
-        extra = (
-            "\n\n**Accredited Laboratories for IS 17526:2021 (Vacuum Insulated Stainless Steel Bottles):**\n"
-            "• **National Test House (NTH), Mumbai:** Thermal retention test, vacuum seal testing, and mechanical drop tests.\n"
-            "• **BIS Recognized Lab (Mumbai & Pune):** Chemical analysis, 24-hr salt spray corrosion testing, and migration safety (IS 9845)."
-        )
-    else:
-        extra = ""
-
     lab_list = "\n".join(
         f"• {r['name']} ({r['city']}, {r['state']}) – "
         + (", ".join(r["capabilities"]) if r["capabilities"] else "Various tests")
@@ -542,12 +312,12 @@ async def _labs_handler(
     return ChatResponse(
         conversation_id=req.conversation_id,
         message_id=message_id,
-        intent="LABORATORY",
-        answer=f"Recognized testing labs in {state}:\n{lab_list or 'National Test House (Mumbai), BIS Recognized Testing Labs'}{extra}",
+        intent=intent,
+        answer=f"Recognized testing labs in {state}:\n{lab_list or 'No labs found in database.'}",
         confidence="MEDIUM",
         citations=[],
-        disclaimer="Verify with the official authority or BIS laboratory directory; not legal advice.",
-        suggested_actions=["Explain BIS Scheme-I application steps", "Check lab accreditation", "View full roadmap"],
+        disclaimer="Verify with the official authority; not legal advice.",
+        suggested_actions=["Contact lab directly", "Check lab accreditation"],
     )
 
 
