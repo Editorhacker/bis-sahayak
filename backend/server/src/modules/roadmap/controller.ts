@@ -7,6 +7,88 @@ import { z } from 'zod';
 import { isValidUUID } from '../../utils/helpers.js';
 import { generateRoadmap, regenerateRoadmapPreservingCompleted } from './engine.js';
 
+const PHASE_ORDER: Record<string, { name: string; order: number }> = {
+  SETUP: { name: 'Setup', order: 1 },
+  TAX: { name: 'Tax', order: 2 },
+  LOCAL: { name: 'Local', order: 3 },
+  BIS: { name: 'BIS', order: 4 },
+  SALES: { name: 'Sales', order: 5 },
+};
+
+function formatStepForFrontend(step: any) {
+  const payload = step.payload || {};
+  return {
+    id: step.id,
+    roadmapId: step.roadmapId,
+    requirementId: step.requirementId,
+    phase: step.phase,
+    order: step.stepOrder,
+    stepOrder: step.stepOrder,
+    title: step.title,
+    description: payload.description || step.reason,
+    reason: step.reason,
+    status: step.status,
+    priority: step.priority,
+    authority: payload.authority || null,
+    confidence: step.confidence,
+    dependsOn: step.dependsOn || [],
+    fee: payload.fee ? (typeof payload.fee === 'object' ? payload.fee : {
+      amount: typeof payload.fee === 'number' ? payload.fee : 0,
+      currency: 'INR',
+      condition: payload.feeNote || '',
+      source: payload.sourceUrl || 'Official Schedule',
+      verifiedOn: payload.lastVerifiedAt || new Date().toISOString(),
+    }) : undefined,
+    taxNote: payload.taxNote || null,
+    documents: Array.isArray(payload.documents)
+      ? payload.documents.map((doc: any, idx: number) =>
+          typeof doc === 'string'
+            ? { id: `doc-${step.id || idx}-${idx}`, name: doc, required: true, completed: false }
+            : doc
+        )
+      : [],
+    sources: payload.citations || [],
+    applyUrl: payload.applyUrl || null,
+    statusUrl: payload.statusUrl || null,
+    prefillData: payload.prefillData || {},
+    payload: step.payload,
+  };
+}
+
+function buildRoadmapResponse(roadmap: any, steps: any[]) {
+  const formattedSteps = steps.map(formatStepForFrontend);
+  const completedCount = formattedSteps.filter(s => s.status === 'COMPLETED').length;
+  const progress = formattedSteps.length > 0 ? Math.round((completedCount / formattedSteps.length) * 100) : 0;
+
+  const phaseMap = new Map<string, any[]>();
+  for (const s of formattedSteps) {
+    const pKey = (s.phase || 'SETUP').toUpperCase();
+    if (!phaseMap.has(pKey)) phaseMap.set(pKey, []);
+    phaseMap.get(pKey)!.push(s);
+  }
+
+  const phases = Object.entries(PHASE_ORDER).map(([phaseKey, phaseMeta]) => ({
+    name: phaseMeta.name,
+    order: phaseMeta.order,
+    steps: (phaseMap.get(phaseKey) || []).sort((a, b) => a.order - b.order),
+  })).filter(p => p.steps.length > 0);
+
+  const resData: any = {
+    id: roadmap.id,
+    businessId: roadmap.businessId,
+    version: roadmap.version,
+    generatedAt: roadmap.createdAt ? new Date(roadmap.createdAt).toISOString() : new Date().toISOString(),
+    progress,
+    totalSteps: formattedSteps.length,
+    completedSteps: completedCount,
+    phases,
+    steps: formattedSteps,
+    roadmapId: roadmap.id,
+  };
+  resData.roadmap = resData;
+  return resData;
+}
+
 export const generateRoadmapController = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   if (!req.user) {
     res.status(401).json({ success: false, error: { code: 'AUTH_REQUIRED', message: 'Authentication required' } });
@@ -41,7 +123,15 @@ export const generateRoadmapController = asyncHandler(async (req: AuthenticatedR
 
   const { roadmapId, steps } = await generateRoadmap(id);
 
-  res.status(201).json({ success: true, data: { roadmapId, steps } });
+  const [roadmap] = await db
+    .select()
+    .from(schema.roadmaps)
+    .where(eq(schema.roadmaps.id, roadmapId))
+    .limit(1);
+
+  const roadmapData = buildRoadmapResponse(roadmap || { id: roadmapId, businessId: id, version: 1 }, steps);
+
+  res.status(201).json({ success: true, data: roadmapData });
 });
 
 export const getRoadmap = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
@@ -57,14 +147,40 @@ export const getRoadmap = asyncHandler(async (req: AuthenticatedRequest, res: Re
     return;
   }
 
-  const [roadmap] = await db
+  // Check if id is businessId
+  let [business] = await db
     .select()
-    .from(schema.roadmaps)
-    .where(and(eq(schema.roadmaps.businessId, id), eq(schema.roadmaps.businessId, req.user.id)))
-    .orderBy(desc(schema.roadmaps.version))
+    .from(schema.businesses)
+    .where(and(eq(schema.businesses.id, id), eq(schema.businesses.userId, req.user.id)))
     .limit(1);
 
-  if (!roadmap) {
+  let roadmap = null;
+
+  if (business) {
+    [roadmap] = await db
+      .select()
+      .from(schema.roadmaps)
+      .where(eq(schema.roadmaps.businessId, business.id))
+      .orderBy(desc(schema.roadmaps.version))
+      .limit(1);
+  } else {
+    // Check if id is roadmapId
+    [roadmap] = await db
+      .select()
+      .from(schema.roadmaps)
+      .where(eq(schema.roadmaps.id, id))
+      .limit(1);
+
+    if (roadmap) {
+      [business] = await db
+        .select()
+        .from(schema.businesses)
+        .where(and(eq(schema.businesses.id, roadmap.businessId), eq(schema.businesses.userId, req.user.id)))
+        .limit(1);
+    }
+  }
+
+  if (!business || !roadmap) {
     res.status(404).json({ success: false, error: { code: 'RESOURCE_NOT_FOUND', message: 'Roadmap not found' } });
     return;
   }
@@ -75,10 +191,9 @@ export const getRoadmap = asyncHandler(async (req: AuthenticatedRequest, res: Re
     .where(eq(schema.roadmapSteps.roadmapId, roadmap.id))
     .orderBy(schema.roadmapSteps.stepOrder);
 
-  const completedCount = steps.filter(s => s.status === 'COMPLETED').length;
-  const progress = steps.length > 0 ? Math.round((completedCount / steps.length) * 100) : 0;
+  const roadmapData = buildRoadmapResponse(roadmap, steps);
 
-  res.json({ success: true, data: { roadmap: { ...roadmap, progress, steps } } });
+  res.json({ success: true, data: roadmapData });
 });
 
 export const updateRoadmapStep = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
@@ -275,5 +390,13 @@ export const regenerateRoadmap = asyncHandler(async (req: AuthenticatedRequest, 
 
   const { roadmapId, steps } = await regenerateRoadmapPreservingCompleted(id, existingRoadmap.id);
 
-  res.json({ success: true, data: { roadmapId, steps } });
+  const [roadmap] = await db
+    .select()
+    .from(schema.roadmaps)
+    .where(eq(schema.roadmaps.id, roadmapId))
+    .limit(1);
+
+  const roadmapData = buildRoadmapResponse(roadmap || { id: roadmapId, businessId: id, version: existingRoadmap.version + 1 }, steps);
+
+  res.json({ success: true, data: roadmapData });
 });

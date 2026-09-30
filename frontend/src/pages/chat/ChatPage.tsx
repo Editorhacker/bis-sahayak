@@ -171,22 +171,38 @@ export function ChatPage() {
           ? parseFloat(rawTurnover)
           : undefined;
 
-      const pName = (source.productName as string) || (product.name as string) || (source.businessName as string) || 'My business';
-      const rawPremises = (source.premisesType as string) ?? undefined;
-      const premisesType = rawPremises === 'factory' ? 'factory_unit' : rawPremises === 'commercial' ? 'shop' : rawPremises;
-
-      const payload = {
-        businessName: pName,
-        businessType: (source.businessType as string) ?? 'manufacturing',
-        structure: (source.structure ?? source.businessStructure) as string ?? undefined,
-        premisesType,
-        state: state || undefined,
-        city:  city  || undefined,
-        employeeCount: Number.isNaN(employeeCount as number) ? undefined : employeeCount,
-        expectedTurnover: Number.isNaN(expectedTurnover as number) ? undefined : expectedTurnover,
+      const cleanStr = (val: unknown): string | undefined => {
+        if (typeof val === 'string' && val.trim() && val !== '[object Object]') return val.trim();
+        return undefined;
       };
 
+      const pName = cleanStr(source.productName) || cleanStr(product.name) || cleanStr(source.businessName) || 'My business';
+      const bType = cleanStr(source.businessType) || 'manufacturing';
+      const rawStruct = cleanStr(source.structure) || cleanStr(source.businessStructure);
+      const struct = rawStruct === 'public_limited' ? 'private_limited' : rawStruct;
+      const rawPrem = cleanStr(source.premisesType);
+      const prem = rawPrem === 'factory' ? 'factory_unit' : rawPrem === 'commercial' ? 'shop' : rawPrem;
+
+      const payload: Record<string, unknown> = {
+        businessName: pName,
+        businessType: bType,
+      };
+
+      if (struct) payload.structure = struct;
+      if (prem) payload.premisesType = prem;
+      if (cleanStr(state)) payload.state = cleanStr(state);
+      if (cleanStr(city)) payload.city = cleanStr(city);
+      if (typeof employeeCount === 'number' && !Number.isNaN(employeeCount) && employeeCount >= 0) {
+        payload.employeeCount = Math.round(employeeCount);
+      }
+      if (typeof expectedTurnover === 'number' && !Number.isNaN(expectedTurnover) && expectedTurnover >= 0) {
+        payload.expectedTurnover = Math.round(expectedTurnover);
+      }
+
       const created = await businessApi.create(payload as never);
+      if (!created.success) {
+        console.error('businessApi.create failed with:', created.error);
+      }
       const biz = (created.data as { business?: { id?: string } } | undefined)?.business;
       if (created.success && biz?.id) {
         // Also auto-add product if product details are known

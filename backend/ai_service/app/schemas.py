@@ -18,6 +18,7 @@ class ProductProfile(BaseModel):
     material: str | None = None
     usage: str | None = None
     category: str | None = None
+    isInsulated: bool | str | None = None
 
 
 class LocationProfile(BaseModel):
@@ -33,6 +34,7 @@ class Profile(BaseModel):
     premisesType: str | None = None
     employeeCount: int | None = None
     expectedTurnover: float | None = None
+    isInsulated: bool | str | None = None
 
 
 class AnalyzeResponse(BaseModel):

@@ -23,6 +23,7 @@ export function generateClarifyingQuestions(
     businessStructure: { text: 'Business structure?', options: ['proprietorship', 'partnership', 'llp', 'private_limited', 'not_decided'] },
     premisesType:      { text: 'Where will you operate?', options: ['home', 'shop', 'factory_unit', 'warehouse'] },
     employeeCount:     { text: 'About how many workers?', type: 'number' },
+    isInsulated:       { text: 'Is the bottle vacuum insulated (keeps drinks hot/cold), or a single-wall bottle? This decides which BIS standard applies.', options: ['vacuum insulated', 'single-wall (non-insulated)'] },
     expectedTurnover:  { text: 'Expected annual turnover (INR)?', type: 'number' },
     state:             { text: 'Which state?', type: 'text' },
     city:              { text: 'Which city?', type: 'text' },

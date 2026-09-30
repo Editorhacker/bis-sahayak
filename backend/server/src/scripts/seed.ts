@@ -260,6 +260,68 @@ async function seed() {
     return true;
   });
 
+  await seedCsv('standards.csv', schema.standards, 'Standards', async (record) => {
+    const sourceUrl = record.source_url.trim();
+    if (!record.standard_number || !sourceUrl) {
+      console.warn(`Skipping standard "${record.standard_number}": missing standard_number or source_url`);
+      return false;
+    }
+    await db
+      .insert(schema.standards)
+      .values({
+        standardNumber: record.standard_number,
+        title: record.title || null,
+        scope: record.scope || null,
+        status: toEnum(schema.standardStatusEnum.enumValues, record.status, 'active'),
+        icsCode: record.ics_code || null,
+        productTags: toList(record.product_tags),
+        sourceUrl,
+        lastVerifiedAt: toDate(record.last_verified_at),
+      })
+      .onConflictDoNothing();
+    return true;
+  });
+
+  await seedCsv('documents.csv', schema.documents, 'Documents', async (record) => {
+    const sourceUrl = record.source_url.trim();
+    const docType = matchEnum(schema.docTypeEnum.enumValues, record.doc_type);
+    if (!record.title || !docType) {
+      console.warn(`Skipping document "${record.title}": missing title or invalid doc_type`);
+      return false;
+    }
+    await db
+      .insert(schema.documents)
+      .values({
+        id: record.id ? parseInt(record.id, 10) : undefined,
+        title: record.title,
+        docType,
+        authority: record.authority || null,
+        standardNumber: record.standard_number || null,
+        sourceUrl: sourceUrl || null,
+        version: record.version || null,
+        lastVerifiedAt: toDate(record.last_verified_at),
+        licenceNote: record.licence_note || null,
+      })
+      .onConflictDoNothing();
+    return true;
+  });
+
+  await seedCsv('chunks.csv', schema.chunks, 'Chunks', async (record) => {
+    const docId = parseInt(record.document_id, 10);
+    if (!docId || !record.content) {
+      console.warn(`Skipping chunk: missing document_id or content`);
+      return false;
+    }
+    await db.insert(schema.chunks).values({
+      documentId: docId,
+      section: record.section || null,
+      clause: record.clause || null,
+      page: record.page ? parseInt(record.page, 10) : null,
+      content: record.content,
+    });
+    return true;
+  });
+
   console.log('Seed completed!');
   process.exit(0);
 }

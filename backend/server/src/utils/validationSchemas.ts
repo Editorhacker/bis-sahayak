@@ -17,21 +17,33 @@ export const refreshSchema = z.object({});
 export const logoutSchema = z.object({});
 
 export const businessCreateSchema = z.object({
-  businessName: z.string().min(1).max(200).nullish(),
-  businessType: z.enum(['manufacturing', 'trading', 'online_seller', 'service']).nullish(),
+  businessName: z.preprocess((v) => (typeof v === 'string' && v.trim() ? v.trim() : null), z.string().min(1).max(200).nullish()),
+  businessType: z.preprocess((v) => (typeof v === 'string' && v.trim() ? v.trim() : null), z.enum(['manufacturing', 'trading', 'online_seller', 'service']).nullish()),
   structure: z.preprocess((val) => {
-    if (val === 'public_limited') return 'private_limited';
-    return val;
-  }, z.enum(['proprietorship', 'partnership', 'llp', 'private_limited', 'not_decided'])).nullish(),
-  state: z.string().min(1).max(100).nullish(),
-  city: z.string().min(1).max(100).nullish(),
+    if (!val || typeof val !== 'string' || !val.trim()) return null;
+    const s = val.trim();
+    if (s === 'public_limited') return 'private_limited';
+    return s;
+  }, z.enum(['proprietorship', 'partnership', 'llp', 'private_limited', 'not_decided']).nullish()),
+  state: z.preprocess((v) => (typeof v === 'string' && v.trim() ? v.trim() : null), z.string().min(1).max(100).nullish()),
+  city: z.preprocess((v) => (typeof v === 'string' && v.trim() ? v.trim() : null), z.string().min(1).max(100).nullish()),
   premisesType: z.preprocess((val) => {
-    if (val === 'factory') return 'factory_unit';
-    if (val === 'commercial') return 'shop';
-    return val;
-  }, z.enum(['home', 'shop', 'factory_unit', 'warehouse'])).nullish(),
-  employeeCount: z.number().int().min(0).max(10000).nullish(),
-  expectedTurnover: z.number().int().min(0).nullish(),
+    if (!val || typeof val !== 'string' || !val.trim()) return null;
+    const p = val.trim();
+    if (p === 'factory') return 'factory_unit';
+    if (p === 'commercial') return 'shop';
+    return p;
+  }, z.enum(['home', 'shop', 'factory_unit', 'warehouse']).nullish()),
+  employeeCount: z.preprocess((v) => {
+    if (v === '' || v == null) return null;
+    const n = Number(v);
+    return Number.isNaN(n) ? null : Math.round(n);
+  }, z.number().int().min(0).max(10000).nullish()),
+  expectedTurnover: z.preprocess((v) => {
+    if (v === '' || v == null) return null;
+    const n = Number(v);
+    return Number.isNaN(n) ? null : Math.round(n);
+  }, z.number().int().min(0).nullish()),
 });
 
 export const businessUpdateSchema = businessCreateSchema.partial();
