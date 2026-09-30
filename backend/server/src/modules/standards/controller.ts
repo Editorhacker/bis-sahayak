@@ -1,14 +1,51 @@
 import { db, schema } from '../../db/index.js';
-import { eq, and, ilike, or, desc } from 'drizzle-orm';
+import { eq, and, ilike, or } from 'drizzle-orm';
 import { AuthenticatedRequest } from '../../middleware/auth.js';
-import { Request, Response } from 'express';
+import { Response } from 'express';
 import { asyncHandler } from '../../middleware/errorHandler.js';
 import { standardSearchSchema, standardRecommendSchema } from '../../utils/validationSchemas.js';
-import { z } from 'zod';
-import { searchStandards, getStandardByNumber, getChunksByStandard, formatContextForLLM } from '../../ai/retrieval.js';
-import { llmProvider } from '../../ai/llm.js';
-import { ANSWER_GENERATOR_PROMPT } from '../../ai/prompts.js';
-import { validateAnswer } from '../../ai/validator.js';
+
+export async function searchStandards(query: string, limit = 10) {
+  const conditions = [
+    or(
+      ilike(schema.standards.standardNumber, `%${query}%`),
+      ilike(schema.standards.title, `%${query}%`),
+      ilike(schema.standards.scope, `%${query}%`)
+    ),
+    eq(schema.standards.status, 'active'),
+  ];
+
+  return db
+    .select()
+    .from(schema.standards)
+    .where(and(...conditions))
+    .limit(limit);
+}
+
+export async function getStandardByNumber(standardNumber: string) {
+  return db
+    .select()
+    .from(schema.standards)
+    .where(eq(schema.standards.standardNumber, standardNumber))
+    .limit(1);
+}
+
+export async function getChunksByStandard(standardNumber: string) {
+  return db
+    .select({
+      chunkId: schema.chunks.id,
+      content: schema.chunks.content,
+      section: schema.chunks.section,
+      clause: schema.chunks.clause,
+      page: schema.chunks.page,
+      standardNumber: schema.documents.standardNumber,
+      sourceUrl: schema.documents.sourceUrl,
+    })
+    .from(schema.chunks)
+    .innerJoin(schema.documents, eq(schema.chunks.documentId, schema.documents.id))
+    .where(eq(schema.documents.standardNumber, standardNumber))
+    .orderBy(schema.chunks.page, schema.chunks.section);
+}
 
 export const searchStandardsController = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
   const { q, limit } = standardSearchSchema.parse(req.query);

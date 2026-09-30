@@ -2,10 +2,20 @@ import { db, schema } from '../../db/index.js';
 import { eq, and, inArray, desc } from 'drizzle-orm';
 import { generateId } from '../../utils/helpers.js';
 import { formatDate } from '../../utils/typeGuards.js';
-import { llmProvider } from '../../ai/llm.js';
-import { ROADMAP_REASON_PROMPT } from '../../ai/prompts.js';
-import { hybridSearch, RetrievalResult } from '../../ai/retrieval.js';
-import { validateAnswer } from '../../ai/validator.js';
+export interface RetrievalResult {
+  chunkId: number;
+  documentId?: number;
+  content?: string;
+  section?: string | null;
+  clause?: string | null;
+  page?: number | null;
+  standardNumber?: string | null;
+  sourceUrl?: string | null;
+  docType?: string | null;
+  authority?: string | null;
+  score?: number;
+  rank?: number;
+}
 
 export interface BusinessProfile {
   id: string;

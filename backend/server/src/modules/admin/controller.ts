@@ -7,7 +7,7 @@ import { validateBody, validateParams, validateQuery } from '../../middleware/va
 import { adminSourceUploadSchema, adminIngestSchema } from '../../utils/validationSchemas.js';
 import { z } from 'zod';
 import { generateId } from '../../utils/helpers.js';
-import { embeddingProvider } from '../../ai/llm.js';
+import { embedTexts } from '../../ai/client.js';
 
 function chunkText(text: string, chunkSize: number, overlap: number): string[] {
   const chunks: string[] = [];
@@ -57,7 +57,7 @@ export const uploadSource = asyncHandler(async (req: AuthenticatedRequest, res: 
 
   // Chunk the content and embed
   const chunks = chunkText(data.content, 1000, 200);
-  const embeddings = await embeddingProvider.embedBatch(chunks);
+  const { embeddings } = await embedTexts(chunks);
 
   for (let i = 0; i < chunks.length; i++) {
     await db.insert(schema.chunks).values({
