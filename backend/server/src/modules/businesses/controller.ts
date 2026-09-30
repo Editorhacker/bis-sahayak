@@ -181,10 +181,10 @@ export const confirmProfile = asyncHandler(async (req: AuthenticatedRequest, res
     return;
   }
 
-  if (!business.businessType || !business.structure || !business.state || !business.city || !business.premisesType || business.employeeCount === null) {
+  if (!business.businessType) {
     res.status(400).json({
       success: false,
-      error: { code: 'VALIDATION_ERROR', message: 'Profile incomplete. Please fill all required fields before confirming.' },
+      error: { code: 'VALIDATION_ERROR', message: 'Business type is required before confirming profile.' },
     });
     return;
   }

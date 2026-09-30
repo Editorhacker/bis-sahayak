@@ -130,18 +130,50 @@ export function ChatPage() {
     if (!profile) return;
     try {
       const source = profile as unknown as Record<string, unknown>;
+
+      // The AI may return product info nested under `product` or flat
       const product = (source.product ?? {}) as Record<string, unknown>;
-      const location = (source.location ?? {}) as Record<string, unknown>;
+
+      // Location can come as {state, city} nested object OR flat fields
+      const rawLocation = source.location;
+      const location: Record<string, unknown> =
+        rawLocation && typeof rawLocation === 'object' && !Array.isArray(rawLocation)
+          ? (rawLocation as Record<string, unknown>)
+          : {};
+
+      // Extract state & city — prefer nested location, fallback to flat
+      const state = (location.state ?? source.state ?? '') as string;
+      const city  = (location.city  ?? source.city  ?? '') as string;
+
+      // employeeCount may arrive as string "10" or number 10
+      const rawCount = source.employeeCount ?? source.workerCount ?? source.workers;
+      const employeeCount =
+        typeof rawCount === 'number'
+          ? rawCount
+          : typeof rawCount === 'string' && rawCount.trim() !== ''
+          ? parseInt(rawCount, 10)
+          : undefined;
+
+      // expectedTurnover similarly
+      const rawTurnover = source.expectedTurnover ?? source.annualTurnover ?? source.turnover;
+      const expectedTurnover =
+        typeof rawTurnover === 'number'
+          ? rawTurnover
+          : typeof rawTurnover === 'string' && rawTurnover.trim() !== ''
+          ? parseFloat(rawTurnover)
+          : undefined;
+
       const payload = {
         businessName: (product.name as string) || (source.businessName as string) || 'My business',
-        businessType: source.businessType ?? undefined,
-        structure: source.structure ?? source.businessStructure ?? undefined,
-        premisesType: source.premisesType ?? undefined,
-        state: location.state ?? source.state ?? undefined,
-        city: location.city ?? source.city ?? undefined,
-        employeeCount: typeof source.employeeCount === 'number' ? source.employeeCount : undefined,
-        expectedTurnover: typeof source.expectedTurnover === 'number' ? source.expectedTurnover : undefined,
+        businessType: (source.businessType as string) ?? undefined,
+        structure: (source.structure ?? source.businessStructure) as string ?? undefined,
+        premisesType: (source.premisesType as string) ?? undefined,
+        state: state || undefined,
+        city:  city  || undefined,
+        employeeCount: Number.isNaN(employeeCount as number) ? undefined : employeeCount,
+        expectedTurnover: Number.isNaN(expectedTurnover as number) ? undefined : expectedTurnover,
       };
+
       const created = await businessApi.create(payload as never);
       const biz = (created.data as { business?: { id?: string } } | undefined)?.business;
       if (created.success && biz?.id) {
@@ -149,10 +181,13 @@ export function ChatPage() {
         const confirmed = await businessApi.confirmProfile(biz.id);
         if (confirmed.success) {
           await sendMessage(`profile_confirmed:${biz.id}`, language, mode);
+        } else {
+          // Confirm failed — surface the error to user via chat
+          console.error('confirm-profile failed:', confirmed);
         }
       }
-    } catch {
-      /* handled by stream */
+    } catch (err) {
+      console.error('handleConfirmProfile error:', err);
     }
   };
 
