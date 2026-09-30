@@ -114,9 +114,9 @@ export async function regenerateRoadmapPreservingCompleted(businessId: string, e
     .where(eq(schema.roadmapSteps.roadmapId, existingRoadmapId));
 
   const completedStepReqIds = existingSteps
-    .filter(s => s.status === 'COMPLETED' || s.status === 'NOT_APPLICABLE')
-    .map(s => s.requirementId)
-    .filter(Boolean);
+    .filter((s: typeof schema.roadmapSteps.$inferSelect) => s.status === 'COMPLETED' || s.status === 'NOT_APPLICABLE')
+    .map((s: typeof schema.roadmapSteps.$inferSelect) => s.requirementId)
+    .filter((id): id is string => Boolean(id));
 
   const { roadmapId, steps } = await generateRoadmap(businessId);
 
@@ -158,7 +158,7 @@ async function getBusinessProfile(businessId: string): Promise<BusinessProfile |
     premisesType: business.premisesType,
     employeeCount: business.employeeCount,
     expectedTurnover: business.expectedTurnover?.toString() || null,
-    products: products.map(p => ({
+    products: products.map((p: typeof schema.products.$inferSelect) => ({
       category: p.category,
       material: p.material,
       usage: p.usage,
@@ -172,7 +172,7 @@ async function getRequirementsWithRules(): Promise<RequirementWithRules[]> {
   const allFees = await db.select().from(schema.fees);
   const allDeps = await db.select().from(schema.requirementDeps);
 
-  const applicabilityMap = new Map(applicabilityRules.map(r => [r.requirementId, r]));
+  const applicabilityMap = new Map(applicabilityRules.map((r: typeof schema.applicabilityRules.$inferSelect) => [r.requirementId, r]));
   const feesMap = new Map<string, typeof schema.fees.$inferSelect[]>();
   for (const fee of allFees) {
     if (!feesMap.has(fee.requirementId)) feesMap.set(fee.requirementId, []);
@@ -184,7 +184,7 @@ async function getRequirementsWithRules(): Promise<RequirementWithRules[]> {
     depsMap.get(dep.requirementId)!.push(dep.dependsOn);
   }
 
-  return requirements.map(req => ({
+  return requirements.map((req: typeof schema.requirements.$inferSelect) => ({
     requirement: req,
     applicability: applicabilityMap.get(req.id) || null,
     fees: feesMap.get(req.id) || [],
@@ -291,7 +291,7 @@ function getProfileField(profile: BusinessProfile, field: string): any {
 
   if (field.startsWith('product.')) {
     const productField = field.replace('product.', '');
-    return profile.products.some(p => p[productField as keyof typeof p]?.toLowerCase().includes('food'));
+    return profile.products.some((p: BusinessProfile['products'][number]) => (p[productField as keyof typeof p] ?? '').toLowerCase().includes('food'));
   }
 
   return fieldMap[field];
@@ -327,6 +327,40 @@ function generateReason(req: RequirementWithRules, profile: BusinessProfile): st
   return `This applies because your profile indicates ${profileFacts}, and the source states: "${sourceQuote}".`;
 }
 
+async function findStandardChunks(query: string, limit = 5): Promise<RetrievalResult[]> {
+  const terms = query.split(' ').filter(Boolean);
+  const whereClause = terms.length > 0
+    ? and(
+        eq(schema.documents.docType, 'standard'),
+        or(...terms.map(t => ilike(schema.chunks.content, `%${t}%`)))
+      )
+    : eq(schema.documents.docType, 'standard');
+
+  const rows = await db
+    .select({
+      chunkId: schema.chunks.id,
+      documentId: schema.chunks.documentId,
+      content: schema.chunks.content,
+      section: schema.chunks.section,
+      clause: schema.chunks.clause,
+      page: schema.chunks.page,
+      standardNumber: schema.documents.standardNumber,
+      sourceUrl: schema.documents.sourceUrl,
+      docType: schema.documents.docType,
+      authority: schema.documents.authority,
+    })
+    .from(schema.chunks)
+    .innerJoin(schema.documents, eq(schema.chunks.documentId, schema.documents.id))
+    .where(whereClause)
+    .limit(limit);
+
+  return rows.map((r, i) => ({
+    ...r,
+    score: 1.0,
+    rank: i + 1,
+  }));
+}
+
 async function generateBISSteps(profile: BusinessProfile): Promise<RoadmapStep[]> {
   const steps: RoadmapStep[] = [];
   let stepOrder = 100;
@@ -338,7 +372,7 @@ async function generateBISSteps(profile: BusinessProfile): Promise<RoadmapStep[]
   
   if (!searchQuery) return steps;
 
-  const results = await hybridSearch(searchQuery, { docTypes: ['standard'] }, 5);
+  const results: RetrievalResult[] = await findStandardChunks(searchQuery, 5);
   
   if (results.length === 0) {
     steps.push({
@@ -388,7 +422,7 @@ async function generateBISSteps(profile: BusinessProfile): Promise<RoadmapStep[]
       feeNote: null,
       taxNote: null,
       sourceUrl: results[0].sourceUrl || 'https://bis.gov.in',
-      sourceQuote: results[0].content.substring(0, 200),
+      sourceQuote: (results[0].content || '').substring(0, 200),
       lastVerifiedAt: null,
       citations: results,
     },
@@ -420,14 +454,14 @@ async function generateBISSteps(profile: BusinessProfile): Promise<RoadmapStep[]
     });
   }
 
-  const testChunks = results.filter(r => r.content.toLowerCase().includes('test') || r.clause?.toLowerCase().includes('test'));
+  const testChunks = results.filter((r: RetrievalResult) => (r.content || '').toLowerCase().includes('test') || (r.clause || '').toLowerCase().includes('test'));
   if (testChunks.length > 0) {
     steps.push({
       requirementId: 'bis_testing',
       stepOrder: stepOrder++,
       phase: 'BIS',
       title: 'Required tests from standard clauses',
-      reason: `The standard ${standardNumber} specifies tests in clauses: ${testChunks.map(c => c.clause).filter(Boolean).join(', ')}.`,
+      reason: `The standard ${standardNumber} specifies tests in clauses: ${testChunks.map((c: RetrievalResult) => c.clause).filter(Boolean).join(', ')}.`,
       status: 'NOT_STARTED',
       priority: 'HIGH',
       confidence: 'MEDIUM',
@@ -440,7 +474,7 @@ async function generateBISSteps(profile: BusinessProfile): Promise<RoadmapStep[]
         feeNote: null,
         taxNote: null,
         sourceUrl: testChunks[0].sourceUrl || '',
-        sourceQuote: testChunks.map(c => c.content).join(' ').substring(0, 500),
+        sourceQuote: testChunks.map((c: RetrievalResult) => c.content || '').join(' ').substring(0, 500),
         lastVerifiedAt: null,
         citations: testChunks,
       },
@@ -473,7 +507,7 @@ async function generateBISSteps(profile: BusinessProfile): Promise<RoadmapStep[]
         feeNote: null,
         taxNote: null,
         sourceUrl: labs[0].sourceUrl || '',
-        sourceQuote: labs.map(l => l.name).join(', '),
+        sourceQuote: labs.map((l: typeof schema.labs.$inferSelect) => l.name).join(', '),
         lastVerifiedAt: formatDate(labs[0].lastVerifiedAt),
         citations: [],
       },
@@ -493,7 +527,7 @@ async function getSchemeForProduct(category: string): Promise<typeof schema.sche
 }
 
 function topologicalSort(steps: RoadmapStep[]): RoadmapStep[] {
-  const map = new Map(steps.map(s => [s.requirementId, s]));
+  const map = new Map<string, RoadmapStep>(steps.map((s: RoadmapStep) => [s.requirementId, s]));
   const visited = new Set<string>();
   const temp = new Set<string>();
   const result: RoadmapStep[] = [];
@@ -520,7 +554,7 @@ function topologicalSort(steps: RoadmapStep[]): RoadmapStep[] {
     visit(step.requirementId);
   }
 
-  return result.reverse().map((s, i) => ({ ...s, stepOrder: i + 1 }));
+  return result.reverse().map((s: RoadmapStep, i: number) => ({ ...s, stepOrder: i + 1 }));
 }
 
 async function getNextRoadmapVersion(businessId: string): Promise<number> {
