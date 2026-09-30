@@ -32,7 +32,7 @@ RUN apk add --no-cache python3 make g++ \
 
 COPY package*.json ./
 # Production deps only
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 COPY --from=builder /app/dist ./dist
 

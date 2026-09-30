@@ -14,9 +14,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
+# Create virtualenv and install dependencies
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+
 COPY requirements.txt .
-RUN pip install --upgrade pip \
-    && pip install --no-cache-dir --prefix=/install -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
 
 # ── Stage 2: runtime ─────────────────────────────────────────────
@@ -24,26 +28,27 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Only the runtime libpq is needed (asyncpg links against it)
+# Only runtime libpq and curl are needed in the final image
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy installed packages from builder
-COPY --from=builder /install /usr/local
+# Copy the entire virtual environment from builder
+COPY --from=builder /opt/venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy application source
+# Copy application source code
 COPY . .
 
 # Non-root user for security
-RUN useradd -m -u 1001 appuser && chown -R appuser:appuser /app
+RUN useradd -m -u 1001 appuser \
+    && chown -R appuser:appuser /app /opt/venv
 USER appuser
 
 EXPOSE 8000
 
-# Uvicorn with 2 workers on CPU-only EC2
-# For GPU/larger instances bump --workers to 4
+# Uvicorn entrypoint using virtualenv's uvicorn binary
 CMD ["uvicorn", "main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
