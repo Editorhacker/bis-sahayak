@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSIONS: int = 768
 
     # ── PostgreSQL ────────────────────────────────
-    DATABASE_URL: str = "postgresql://postgres:123456@postgres:5432/business_saarthi"
+    DATABASE_URL: str = "postgresql://postgres:postgres@postgres:5432/business_saarthi"
 
     # ── Security ──────────────────────────────────
     # Shared secret between TypeScript backend and this service.
