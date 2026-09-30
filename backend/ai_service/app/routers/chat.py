@@ -49,63 +49,59 @@ _ROADMAP_INTENTS = {
 async def chat(req: ChatRequest) -> ChatResponse:
     message_id = str(uuid.uuid4())
 
-    try:
-        # Step 1 – Analyze
-        analysis = await _analyze(req.message)
+    # Step 1 – Analyze
+    analysis = await _analyze(req.message)
 
-        intent = analysis.get("intent", "GENERAL")
-        profile = analysis.get("profile", {})
-        language = analysis.get("language", "en")
-        normalized = analysis.get("normalizedQuery", req.message)
-        missing = analysis.get("missingFields", [])
+    intent = analysis.get("intent", "GENERAL")
+    profile = analysis.get("profile", {})
+    language = analysis.get("language", "en")
+    normalized = analysis.get("normalizedQuery", req.message)
+    missing = analysis.get("missingFields", [])
 
-        flat_profile = _normalize_profile_card(profile)
+    flat_profile = _normalize_profile_card(profile)
 
-        # Filter out missing fields that already have values in profile
-        actual_missing: list[str] = []
-        for f in missing:
-            val = flat_profile.get(f)
-            if val is None or val == "":
-                if f in ("businessStructure", "structure") and flat_profile.get("structure"):
-                    continue
-                if f in ("employeeCount", "workerCount") and flat_profile.get("workerCount") is not None:
-                    continue
-                if f in ("expectedTurnover", "annualTurnover") and flat_profile.get("annualTurnover") is not None:
-                    continue
-                if f == "premisesType" and flat_profile.get("premisesType"):
-                    continue
-                if f == "businessType" and flat_profile.get("businessType"):
-                    continue
-                actual_missing.append(f)
+    # Filter out missing fields that already have values in profile
+    actual_missing: list[str] = []
+    for f in missing:
+        val = flat_profile.get(f)
+        if val is None or val == "":
+            if f in ("businessStructure", "structure") and flat_profile.get("structure"):
+                continue
+            if f in ("employeeCount", "workerCount") and flat_profile.get("workerCount") is not None:
+                continue
+            if f in ("expectedTurnover", "annualTurnover") and flat_profile.get("annualTurnover") is not None:
+                continue
+            if f == "premisesType" and flat_profile.get("premisesType"):
+                continue
+            if f == "businessType" and flat_profile.get("businessType"):
+                continue
+            actual_missing.append(f)
 
-        # Step 2 – Clarifying questions if needed
-        if actual_missing and intent == "BUSINESS_SETUP":
-            return ChatResponse(
-                conversation_id=req.conversation_id,
-                message_id=message_id,
-                intent=intent,
-                answer=f"I understood: {normalized}. A few details change your roadmap:",
-                confidence="LOW",
-                citations=[],
-                disclaimer="Verify with the official authority; not legal advice.",
-                suggested_actions=["Provide missing details"],
-                clarifying_questions=_clarifying_questions(actual_missing),
-                profile_card=flat_profile,
-            )
+    # Step 2 – Clarifying questions if needed
+    if actual_missing and intent == "BUSINESS_SETUP":
+        return ChatResponse(
+            conversation_id=req.conversation_id,
+            message_id=message_id,
+            intent=intent,
+            answer=f"I understood: {normalized}. A few details change your roadmap:",
+            confidence="LOW",
+            citations=[],
+            disclaimer="Verify with the official authority; not legal advice.",
+            suggested_actions=["Provide missing details"],
+            clarifying_questions=_clarifying_questions(actual_missing),
+            profile_card=flat_profile,
+        )
 
-        # Step 3 – Route
-        msg_lower = req.message.lower()
-        if intent == "FEES" or "exact bis licence fee" in msg_lower or ("fee" in msg_lower and "licence" in msg_lower):
-            return await _fees_handler(req, message_id)
-        elif intent in _BIS_INTENTS or "standard" in msg_lower or "bis" in msg_lower or "is 4250" in msg_lower or "is 17526" in msg_lower or "mixer" in msg_lower or "bottle" in msg_lower:
-            return await _bis_handler(req, message_id, intent, analysis, language)
-        elif intent == "LABORATORY" or "lab" in msg_lower:
-            return await _labs_handler(req, message_id, intent, analysis, language)
-        else:
-            return await _general_handler(req, message_id, intent, language)
-    except Exception as exc:
-        logger.error("Unhandled error in chat endpoint: %s", exc, exc_info=True)
-        return await _general_handler(req, message_id, "GENERAL", "en")
+    # Step 3 – Route
+    msg_lower = req.message.lower()
+    if intent == "FEES" or "exact bis licence fee" in msg_lower or ("fee" in msg_lower and "licence" in msg_lower):
+        return await _fees_handler(req, message_id)
+    elif intent in _BIS_INTENTS or "standard" in msg_lower or "bis" in msg_lower or "is 4250" in msg_lower or "is 17526" in msg_lower or "mixer" in msg_lower or "bottle" in msg_lower:
+        return await _bis_handler(req, message_id, intent, analysis, language)
+    elif intent == "LABORATORY" or "lab" in msg_lower:
+        return await _labs_handler(req, message_id, intent, analysis, language)
+    else:
+        return await _general_handler(req, message_id, intent, language)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -152,15 +148,10 @@ async def _bis_handler(
     if not query:
         query = req.message
 
-    results: list[RetrievalResult] = []
-    try:
-        results = await hybrid_search(
-            query,
-            RetrievalFilters(doc_types=["standard", "scheme", "guideline", "notice"]),
-        )
-    except Exception as exc:
-        logger.warning("hybrid_search failed in _bis_handler: %s", exc)
-        results = []
+    results = await hybrid_search(
+        query,
+        RetrievalFilters(doc_types=["standard", "scheme", "guideline", "notice"]),
+    )
 
     # Detailed handler for electric food mixer
     if "mixer" in msg_lower or "blender" in msg_lower or "grinder" in msg_lower:
@@ -180,33 +171,22 @@ async def _bis_handler(
             "• **Food Contact Rust Resistance (Clause 30):** Stainless steel jars and cutter blades must be non-toxic and rust resistant.\n\n"
             "**Confidence: HIGH.** Retrieved from official BIS Standard IS 4250:2025 and Electrical Appliances QCO."
         )
-        cites = [
-            Citation(
-                chunkId=r.chunk_id,
-                standardNumber=r.standard_number or "IS 4250:2025",
-                clause=r.clause or "General",
-                excerpt=r.content[:200],
-                sourceUrl=r.source_url or "https://www.bis.gov.in/standard/is-4250-2025",
-            )
-            for r in (results or [])
-        ]
-        if not cites:
-            cites = [
-                Citation(
-                    chunkId=101,
-                    standardNumber="IS 4250:2025",
-                    clause="Clause 1 & 7",
-                    excerpt="Domestic Electric Food Mixers (Liquidizers and Grinders) and Centrifugal Juicers — Specification.",
-                    sourceUrl="https://www.bis.gov.in/standard/is-4250-2025",
-                )
-            ]
         return ChatResponse(
             conversation_id=req.conversation_id,
             message_id=message_id,
             intent="BIS_STANDARD",
             answer=ans,
             confidence="HIGH",
-            citations=cites,
+            citations=[
+                Citation(
+                    chunkId=r.chunk_id,
+                    standardNumber=r.standard_number or "IS 4250:2025",
+                    clause=r.clause or "General",
+                    excerpt=r.content[:200],
+                    sourceUrl=r.source_url or "https://www.bis.gov.in/standard/is-4250-2025",
+                )
+                for r in (results or [])
+            ],
             disclaimer="Verify with the official BIS authority before application; not legal advice.",
             suggested_actions=["Find recognized electrical testing labs", "Explain BIS Scheme-I application steps", "Mark step 8 as in progress"],
         )
@@ -228,33 +208,22 @@ async def _bis_handler(
             "**Phase-in periods:** Reports say small and micro manufacturers were given an exemption period of 6 to 9 months. That period may already have ended, so the app shows this as **needs verification**, not as a current exemption.\n\n"
             "**Confidence: MEDIUM.** The evidence is relevant, but it comes from secondary sources, and applicability depends on whether your product is insulated."
         )
-        cites = [
-            Citation(
-                chunkId=r.chunk_id,
-                standardNumber=r.standard_number or "IS 17526:2021",
-                clause=r.clause or "Clause 5.2 & 7.2",
-                excerpt=r.content[:200],
-                sourceUrl=r.source_url or "https://www.bis.gov.in/standard/is-17526-2021",
-            )
-            for r in (results or [])
-        ]
-        if not cites:
-            cites = [
-                Citation(
-                    chunkId=201,
-                    standardNumber="IS 17526:2021",
-                    clause="Clause 5.2 & 7.2",
-                    excerpt="Domestic Stainless Steel Vacuum Flasks and Insulated Bottles — Specification.",
-                    sourceUrl="https://www.bis.gov.in/standard/is-17526-2021",
-                )
-            ]
         return ChatResponse(
             conversation_id=req.conversation_id,
             message_id=message_id,
             intent="BIS_STANDARD",
             answer=ans,
             confidence="MEDIUM",
-            citations=cites,
+            citations=[
+                Citation(
+                    chunkId=r.chunk_id,
+                    standardNumber=r.standard_number or "IS 17526:2021",
+                    clause=r.clause or "Clause 5.2 & 7.2",
+                    excerpt=r.content[:200],
+                    sourceUrl=r.source_url or "https://www.bis.gov.in/standard/is-17526-2021",
+                )
+                for r in (results or [])
+            ],
             disclaimer="⚠️ Before relying on this, check the current position on the official BIS and DPIIT websites. This is not legal advice.",
             suggested_actions=["Find labs in Maharashtra", "Explain the BIS application steps", "Mark step 8 as in progress"],
         )
