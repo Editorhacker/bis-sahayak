@@ -12,6 +12,7 @@ import { ConfidenceBadge } from '../shared/badges';
 import { VerifiedOn } from '../shared/verified';
 import { CitationChip } from './CitationChip';
 import { ProfileCard } from './ProfileCard';
+import { useProfileStore } from '../../stores';
 import { cn } from '../../lib/utils';
 
 export function StreamingText({ text, className }: { text: string; className?: string }) {
@@ -406,9 +407,15 @@ function ProfileCardWrapper({
   onConfirm?: () => void;
   onUpdateField?: (field: string, value: string | number) => void;
 }) {
+  const currentBusiness = useProfileStore((s) => s.currentBusiness);
+  const prof = {
+    ...((message.profile as Record<string, unknown>) ?? {}),
+    ...((currentBusiness as unknown as Record<string, unknown>) ?? {}),
+  };
+
   return (
     <ProfileCard
-      profile={message.profile as Record<string, never>}
+      profile={prof as Record<string, never>}
       questions={message.profileQuestions}
       onConfirm={onConfirm}
       onUpdateField={onUpdateField as never}

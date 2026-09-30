@@ -122,9 +122,12 @@
     },
     "premisesTypes": {
       "factory": "फॅक्टरी युनिट",
+      "factory_unit": "फॅक्टरी युनिट",
       "workshop": "कार्यशाळा",
       "home": "घर",
-      "commercial": "व्यावसायिक"
+      "commercial": "व्यावसायिक",
+      "shop": "दुकान",
+      "warehouse": "गोदाम"
     }
   },
   "roadmap": {

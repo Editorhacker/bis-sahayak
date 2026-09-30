@@ -134,16 +134,24 @@ export function ChatPage() {
       // The AI may return product info nested under `product` or flat
       const product = (source.product ?? {}) as Record<string, unknown>;
 
-      // Location can come as {state, city} nested object OR flat fields
+      // Location can come as {state, city} nested object, flat fields, or "City, State" string
       const rawLocation = source.location;
       const location: Record<string, unknown> =
         rawLocation && typeof rawLocation === 'object' && !Array.isArray(rawLocation)
           ? (rawLocation as Record<string, unknown>)
           : {};
 
-      // Extract state & city — prefer nested location, fallback to flat
-      const state = (location.state ?? source.state ?? '') as string;
-      const city  = (location.city  ?? source.city  ?? '') as string;
+      let state = (location.state ?? source.state ?? '') as string;
+      let city  = (location.city  ?? source.city  ?? '') as string;
+      if (!city && !state && typeof rawLocation === 'string' && rawLocation !== '[object Object]') {
+        const parts = rawLocation.split(',').map((s) => s.trim());
+        if (parts.length >= 2) {
+          city = parts[0];
+          state = parts.slice(1).join(', ');
+        } else if (parts.length === 1) {
+          city = parts[0];
+        }
+      }
 
       // employeeCount may arrive as string "10" or number 10
       const rawCount = source.employeeCount ?? source.workerCount ?? source.workers;
@@ -163,11 +171,15 @@ export function ChatPage() {
           ? parseFloat(rawTurnover)
           : undefined;
 
+      const pName = (source.productName as string) || (product.name as string) || (source.businessName as string) || 'My business';
+      const rawPremises = (source.premisesType as string) ?? undefined;
+      const premisesType = rawPremises === 'factory' ? 'factory_unit' : rawPremises === 'commercial' ? 'shop' : rawPremises;
+
       const payload = {
-        businessName: (product.name as string) || (source.businessName as string) || 'My business',
-        businessType: (source.businessType as string) ?? undefined,
+        businessName: pName,
+        businessType: (source.businessType as string) ?? 'manufacturing',
         structure: (source.structure ?? source.businessStructure) as string ?? undefined,
-        premisesType: (source.premisesType as string) ?? undefined,
+        premisesType,
         state: state || undefined,
         city:  city  || undefined,
         employeeCount: Number.isNaN(employeeCount as number) ? undefined : employeeCount,
@@ -177,12 +189,31 @@ export function ChatPage() {
       const created = await businessApi.create(payload as never);
       const biz = (created.data as { business?: { id?: string } } | undefined)?.business;
       if (created.success && biz?.id) {
-        setCurrentBusiness({ ...profile, id: biz.id });
+        // Also auto-add product if product details are known
+        if (pName) {
+          await businessApi.addProduct(biz.id, {
+            name: pName,
+            material: (source.material as string) || (product.material as string) || undefined,
+            description: (source.productDescription as string) || (product.description as string) || undefined,
+          }).catch((e) => console.warn('Could not auto-add product:', e));
+        }
+
         const confirmed = await businessApi.confirmProfile(biz.id);
+        setCurrentBusiness({ ...profile, id: biz.id, profileConfirmed: true });
+
+        // Update messages in chat store to show confirmed state immediately
+        const chatStore = useChatStore.getState();
+        chatStore.setMessages(
+          chatStore.messages.map((msg) =>
+            msg.messageType === 'profile' || msg.profile
+              ? { ...msg, profile: { ...((msg.profile as Record<string, unknown>) ?? {}), profileConfirmed: true } }
+              : msg
+          )
+        );
+
         if (confirmed.success) {
           await sendMessage(`profile_confirmed:${biz.id}`, language, mode);
         } else {
-          // Confirm failed — surface the error to user via chat
           console.error('confirm-profile failed:', confirmed);
         }
       }
@@ -357,7 +388,17 @@ export function ChatPage() {
                 onConfirmProfile={handleConfirmProfile}
                 onUpdateProfileField={(field, value) => {
                   const p = useProfileStore.getState().currentBusiness;
-                  if (p) useProfileStore.setState({ currentBusiness: { ...p, [field]: value } as never });
+                  const updated = { ...(p ?? {}), [field]: value };
+                  useProfileStore.setState({ currentBusiness: updated as never });
+
+                  const chatStore = useChatStore.getState();
+                  chatStore.setMessages(
+                    chatStore.messages.map((msg) =>
+                      msg.messageType === 'profile' || msg.profile
+                        ? { ...msg, profile: { ...((msg.profile as Record<string, unknown>) ?? {}), [field]: value } }
+                        : msg
+                    )
+                  );
                 }}
                 onOpenRoadmap={handleOpenRoadmap}
               />

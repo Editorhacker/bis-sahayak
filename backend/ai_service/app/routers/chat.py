@@ -58,8 +58,27 @@ async def chat(req: ChatRequest) -> ChatResponse:
     normalized = analysis.get("normalizedQuery", req.message)
     missing = analysis.get("missingFields", [])
 
+    flat_profile = _normalize_profile_card(profile)
+
+    # Filter out missing fields that already have values in profile
+    actual_missing: list[str] = []
+    for f in missing:
+        val = flat_profile.get(f)
+        if val is None or val == "":
+            if f in ("businessStructure", "structure") and flat_profile.get("structure"):
+                continue
+            if f in ("employeeCount", "workerCount") and flat_profile.get("workerCount") is not None:
+                continue
+            if f in ("expectedTurnover", "annualTurnover") and flat_profile.get("annualTurnover") is not None:
+                continue
+            if f == "premisesType" and flat_profile.get("premisesType"):
+                continue
+            if f == "businessType" and flat_profile.get("businessType"):
+                continue
+            actual_missing.append(f)
+
     # Step 2 – Clarifying questions if needed
-    if missing and intent == "BUSINESS_SETUP":
+    if actual_missing and intent == "BUSINESS_SETUP":
         return ChatResponse(
             conversation_id=req.conversation_id,
             message_id=message_id,
@@ -69,8 +88,8 @@ async def chat(req: ChatRequest) -> ChatResponse:
             citations=[],
             disclaimer="Verify with the official authority; not legal advice.",
             suggested_actions=["Provide missing details"],
-            clarifying_questions=_clarifying_questions(missing),
-            profile_card=profile,
+            clarifying_questions=_clarifying_questions(actual_missing),
+            profile_card=flat_profile,
         )
 
     # Step 3 – Route
@@ -254,6 +273,37 @@ async def _analyze(message: str) -> dict:
         }
 
 
+def _normalize_profile_card(profile: dict) -> dict:
+    product = profile.get("product") if isinstance(profile.get("product"), dict) else {}
+    location = profile.get("location") if isinstance(profile.get("location"), dict) else {}
+
+    city = location.get("city") or profile.get("city")
+    state = location.get("state") or profile.get("state")
+    loc_parts = [c for c in [city, state] if c]
+    location_str = ", ".join(loc_parts) if loc_parts else (profile.get("location") if isinstance(profile.get("location"), str) else None)
+
+    product_name = product.get("name") or profile.get("productName") or profile.get("businessName")
+    material = product.get("material") or profile.get("material")
+    structure = profile.get("structure") or profile.get("businessStructure")
+    worker_count = profile.get("workerCount") or profile.get("employeeCount")
+    turnover = profile.get("annualTurnover") or profile.get("expectedTurnover")
+
+    return {
+        **profile,
+        "productName": product_name,
+        "material": material,
+        "location": location_str,
+        "state": state,
+        "city": city,
+        "structure": structure,
+        "businessStructure": structure,
+        "workerCount": worker_count,
+        "employeeCount": worker_count,
+        "annualTurnover": turnover,
+        "expectedTurnover": turnover,
+    }
+
+
 _FIELD_QUESTIONS: dict[str, dict] = {
     "businessType": {
         "text": "Will you manufacture, trade/resell, or sell online?",
@@ -263,14 +313,21 @@ _FIELD_QUESTIONS: dict[str, dict] = {
         "text": "Business structure?",
         "options": ["proprietorship", "partnership", "llp", "private_limited", "not_decided"],
     },
+    "structure": {
+        "text": "Business structure?",
+        "options": ["proprietorship", "partnership", "llp", "private_limited", "not_decided"],
+    },
     "premisesType": {
         "text": "Where will you operate from?",
         "options": ["home", "shop", "factory_unit", "warehouse"],
     },
     "employeeCount": {"text": "About how many workers?", "type": "number"},
+    "workerCount": {"text": "About how many workers?", "type": "number"},
     "expectedTurnover": {"text": "Expected annual turnover (INR)?", "type": "number"},
+    "annualTurnover": {"text": "Expected annual turnover (INR)?", "type": "number"},
     "state": {"text": "Which state?", "type": "text"},
     "city": {"text": "Which city?", "type": "text"},
+    "material": {"text": "What material is used?", "type": "text"},
 }
 
 
@@ -279,5 +336,11 @@ def _clarifying_questions(missing: list[str]) -> list[dict]:
     for field in missing:
         q = _FIELD_QUESTIONS.get(field)
         if q:
-            out.append({"field": field, **q})
+            out.append({
+                "field": field,
+                "question": q["text"],
+                "text": q["text"],
+                **q
+            })
     return out
+

@@ -3,6 +3,7 @@ import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { useChatStore, useProfileStore, useRoadmapStore } from '../stores';
 import { ensureAccessToken, getAccessToken, refreshAccessToken } from '../services/api';
 import type { ChatMessage, Citation, ProfileQuestion } from '../types';
+import { normalizeProfileData } from '../components/chat/ProfileCard';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api/v1';
 
@@ -132,8 +133,12 @@ export function useChatStream() {
               break;
             }
             case 'profile': {
-              const prof = (data.profile ?? data) as Record<string, unknown>;
-              const questions = (data.questions ?? []) as ProfileQuestion[];
+              const rawProf = (data.profile ?? data) as Record<string, unknown>;
+              const prof = normalizeProfileData(rawProf);
+              const questions = ((data.questions ?? []) as Array<ProfileQuestion & { text?: string }>).map((q) => ({
+                ...q,
+                question: q.question || q.text || '',
+              }));
               profile.setCurrentBusiness(prof as never);
               profile.setProfileQuestions(questions);
               useChatStore.getState().updateMessage(assistantId, {

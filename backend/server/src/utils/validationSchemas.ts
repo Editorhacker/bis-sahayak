@@ -19,10 +19,17 @@ export const logoutSchema = z.object({});
 export const businessCreateSchema = z.object({
   businessName: z.string().min(1).max(200).nullish(),
   businessType: z.enum(['manufacturing', 'trading', 'online_seller', 'service']).nullish(),
-  structure: z.enum(['proprietorship', 'partnership', 'llp', 'private_limited', 'not_decided']).nullish(),
+  structure: z.preprocess((val) => {
+    if (val === 'public_limited') return 'private_limited';
+    return val;
+  }, z.enum(['proprietorship', 'partnership', 'llp', 'private_limited', 'not_decided'])).nullish(),
   state: z.string().min(1).max(100).nullish(),
   city: z.string().min(1).max(100).nullish(),
-  premisesType: z.enum(['home', 'shop', 'factory_unit', 'warehouse']).nullish(),
+  premisesType: z.preprocess((val) => {
+    if (val === 'factory') return 'factory_unit';
+    if (val === 'commercial') return 'shop';
+    return val;
+  }, z.enum(['home', 'shop', 'factory_unit', 'warehouse'])).nullish(),
   employeeCount: z.number().int().min(0).max(10000).nullish(),
   expectedTurnover: z.number().int().min(0).nullish(),
 });

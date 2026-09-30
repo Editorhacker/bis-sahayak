@@ -7,7 +7,7 @@ import { Input } from '../ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
 import { cn } from '../../lib/utils';
 
-type FieldKey =
+export type FieldKey =
   | 'productName'
   | 'material'
   | 'location'
@@ -17,21 +17,101 @@ type FieldKey =
   | 'workerCount'
   | 'annualTurnover';
 
-const translatableOptions = ['manufacturing', 'trading', 'service', 'import', 'proprietorship', 'partnership', 'llp', 'private_limited', 'public_limited', 'factory', 'workshop', 'home', 'commercial'];
+const translatableOptions = [
+  'manufacturing', 'trading', 'service', 'import',
+  'proprietorship', 'partnership', 'llp', 'private_limited', 'public_limited',
+  'factory', 'factory_unit', 'workshop', 'home', 'commercial', 'shop', 'warehouse'
+];
 
-function useOptionLabel() {
+export function normalizeProfileData(rawProfile: Record<string, unknown> | Partial<BusinessProfile> | null | undefined): Partial<BusinessProfile> & Record<string, unknown> {
+  if (!rawProfile) return {};
+  const p = { ...rawProfile } as Record<string, unknown>;
+  const product = (p.product && typeof p.product === 'object' && !Array.isArray(p.product))
+    ? (p.product as Record<string, unknown>)
+    : {};
+
+  const rawLoc = p.location;
+  let locStr: string | undefined = undefined;
+  let stateStr = (p.state as string) || undefined;
+  let cityStr = (p.city as string) || undefined;
+
+  if (typeof rawLoc === 'string' && rawLoc !== '[object Object]') {
+    locStr = rawLoc;
+  } else if (rawLoc && typeof rawLoc === 'object') {
+    const locObj = rawLoc as Record<string, unknown>;
+    cityStr = (locObj.city as string) || cityStr;
+    stateStr = (locObj.state as string) || stateStr;
+    const parts = [cityStr, stateStr].filter(Boolean);
+    if (parts.length > 0) locStr = parts.join(', ');
+  } else if (cityStr || stateStr) {
+    const parts = [cityStr, stateStr].filter(Boolean);
+    if (parts.length > 0) locStr = parts.join(', ');
+  }
+
+  const productName = (p.productName ?? product.name ?? p.businessName ?? '') as string;
+  const material = (p.material ?? product.material ?? '') as string;
+  const businessType = (p.businessType ?? '') as string;
+  const structure = (p.structure ?? p.businessStructure ?? '') as string;
+  const premisesType = (p.premisesType ?? '') as string;
+
+  const rawWorkers = p.workerCount ?? p.employeeCount ?? p.workers;
+  const workerCount = (rawWorkers != null && rawWorkers !== '') ? Number(rawWorkers) : undefined;
+
+  const rawTurnover = p.annualTurnover ?? p.expectedTurnover ?? p.turnover;
+  const annualTurnover = (rawTurnover != null && rawTurnover !== '') ? Number(rawTurnover) : undefined;
+
+  return {
+    ...p,
+    productName: productName || undefined,
+    material: material || undefined,
+    location: locStr || undefined,
+    state: stateStr || undefined,
+    city: cityStr || undefined,
+    businessType: (businessType as BusinessProfile['businessType']) || undefined,
+    structure: (structure as BusinessProfile['structure']) || undefined,
+    premisesType: (premisesType as BusinessProfile['premisesType']) || undefined,
+    workerCount: Number.isNaN(workerCount) ? undefined : workerCount,
+    annualTurnover: Number.isNaN(annualTurnover) ? undefined : annualTurnover,
+  };
+}
+
+export function useOptionLabel() {
   const { t } = useTranslation();
   return (field: FieldKey, value: string) => {
+    if (!value) return '';
     if (field === 'businessType') return t(`profile.businessTypes.${value}`, { defaultValue: value });
-    if (field === 'structure') return t(`profile.structures.${value}`, { defaultValue: value });
-    if (field === 'premisesType') return t(`profile.premisesTypes.${value}`, { defaultValue: value });
+    if (field === 'structure') return t(`profile.structures.${value}`, { defaultValue: value.replace('_', ' ') });
+    if (field === 'premisesType') {
+      const normalizedKey = value === 'factory' ? 'factory_unit' : value === 'commercial' ? 'shop' : value;
+      return t(`profile.premisesTypes.${normalizedKey}`, { defaultValue: value.replace('_', ' ') });
+    }
     if (translatableOptions.includes(value)) return value;
     return value;
   };
 }
 
+function formatDisplayValue(
+  value: unknown,
+  field: FieldKey,
+  optionLabel: (f: FieldKey, v: string) => string
+): string {
+  if (value == null || value === '') return '';
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    const parts = [obj.city, obj.state].filter(Boolean);
+    if (parts.length > 0) return parts.join(', ');
+    return '';
+  }
+  const str = String(value);
+  if (field === 'businessType' || field === 'structure' || field === 'premisesType') {
+    return optionLabel(field, str);
+  }
+  return str;
+}
+
 function Chip({
   label,
+  field,
   value,
   missing,
   editable,
@@ -42,6 +122,7 @@ function Chip({
   onSave,
 }: {
   label: string;
+  field: FieldKey;
   value: string | number | undefined;
   missing?: boolean;
   editable?: boolean;
@@ -53,6 +134,7 @@ function Chip({
 }) {
   const { t } = useTranslation();
   const optionLabel = useOptionLabel();
+  const displayVal = formatDisplayValue(value, field, optionLabel);
   const [draft, setDraft] = useState(value != null ? String(value) : '');
 
   if (editing) {
@@ -71,7 +153,7 @@ function Chip({
             <option value="">Select…</option>
             {options.map((o) => (
               <option key={o} value={o}>
-                {optionLabel('businessType', o)}
+                {optionLabel(field, o)}
               </option>
             ))}
           </select>
@@ -88,7 +170,16 @@ function Chip({
             aria-label={label}
           />
         )}
-        <Button size="iconSm" variant="ghost" onMouseDown={(e) => { e.preventDefault(); onSave?.(draft); }} aria-label={t('common.save')} className="h-8 w-8 min-h-[32px]">
+        <Button
+          size="iconSm"
+          variant="ghost"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onSave?.(draft);
+          }}
+          aria-label={t('common.save')}
+          className="h-8 w-8 min-h-[32px]"
+        >
           <Check className="h-4 w-4 text-green-600" />
         </Button>
       </span>
@@ -108,7 +199,7 @@ function Chip({
         editable && 'hover:border-primary/50',
         !editable && 'cursor-default'
       )}
-      aria-label={`${label}: ${value != null && value !== '' ? value : t('profile.missingField')}`}
+      aria-label={`${label}: ${displayVal || t('profile.missingField')}`}
     >
       <span className="text-xs font-medium text-muted-foreground">{label}</span>
       {missing ? (
@@ -117,7 +208,7 @@ function Chip({
           {t('profile.missingField')}
         </span>
       ) : (
-        <span className="font-medium truncate">{String(value)}</span>
+        <span className="font-medium truncate">{displayVal}</span>
       )}
       {editable && !missing && (
         <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-100 transition-opacity" aria-hidden="true" />
@@ -125,6 +216,23 @@ function Chip({
     </button>
   );
 }
+
+const fieldAliasMap: Record<string, FieldKey> = {
+  businessStructure: 'structure',
+  structure: 'structure',
+  employeeCount: 'workerCount',
+  workerCount: 'workerCount',
+  expectedTurnover: 'annualTurnover',
+  annualTurnover: 'annualTurnover',
+  product: 'productName',
+  productName: 'productName',
+  material: 'material',
+  location: 'location',
+  state: 'location',
+  city: 'location',
+  premisesType: 'premisesType',
+  businessType: 'businessType',
+};
 
 export function ProfileCard({
   profile,
@@ -144,7 +252,7 @@ export function ProfileCard({
   const { t } = useTranslation();
   const [editingField, setEditingField] = useState<FieldKey | null>(null);
 
-  const getQuestion = (field: string) => questions.find((q) => q.field === field);
+  const normalized = normalizeProfileData(profile);
 
   const fields: {
     key: FieldKey;
@@ -157,13 +265,28 @@ export function ProfileCard({
     { key: 'location', label: t('profile.location') },
     { key: 'businessType', label: t('profile.businessType'), options: ['manufacturing', 'trading', 'service', 'import'], type: 'select' },
     { key: 'structure', label: t('profile.structure'), options: ['proprietorship', 'partnership', 'llp', 'private_limited', 'public_limited'], type: 'select' },
-    { key: 'premisesType', label: t('profile.premises'), options: ['factory', 'workshop', 'home', 'commercial'], type: 'select' },
+    { key: 'premisesType', label: t('profile.premises'), options: ['factory_unit', 'shop', 'home', 'warehouse'], type: 'select' },
     { key: 'workerCount', label: t('profile.workers'), type: 'number' },
     { key: 'annualTurnover', label: t('profile.turnover'), type: 'number' },
   ];
 
-  const allValues = fields.map((f) => profile[f.key as keyof typeof profile]);
-  const missingCount = allValues.filter((v) => v == null || v === '').length;
+  const missingFields = fields.filter((f) => {
+    const val = normalized[f.key as keyof typeof normalized];
+    return val == null || val === '';
+  });
+  const missingCount = missingFields.length;
+  const missingFieldKeys = new Set(missingFields.map((f) => f.key));
+
+  const relevantQuestions = questions
+    .map((q) => {
+      const mappedKey = fieldAliasMap[q.field] ?? (q.field as FieldKey);
+      return {
+        ...q,
+        field: mappedKey,
+        question: q.question || (q as unknown as { text?: string }).text || '',
+      };
+    })
+    .filter((q) => missingFieldKeys.has(q.field as FieldKey));
 
   return (
     <Card
@@ -177,7 +300,7 @@ export function ProfileCard({
         <CardTitle className="flex items-center gap-2 text-base">
           <BadgeCheck className="h-5 w-5 text-primary" aria-hidden="true" />
           {t('profile.title')}
-          {profile.profileConfirmed && (
+          {normalized.profileConfirmed && (
             <span className="inline-flex items-center gap-1 rounded-full bg-green-50 border border-green-200 px-2 py-0.5 text-xs font-medium text-green-700">
               <Check className="h-3 w-3" aria-hidden="true" />
               {t('profile.confirmed')}
@@ -189,14 +312,15 @@ export function ProfileCard({
       <CardContent className="space-y-4">
         <div className="flex flex-wrap gap-2">
           {fields.map((f) => {
-            const raw = profile[f.key as keyof typeof profile] as string | number | undefined;
+            const raw = normalized[f.key as keyof typeof normalized] as string | number | undefined;
             const missing = raw == null || raw === '';
-            const q = getQuestion(f.key);
+            const q = questions.find((item) => (fieldAliasMap[item.field] ?? item.field) === f.key);
             const displayType = f.type ?? (q?.type as 'text' | 'select' | 'number' | undefined) ?? 'text';
-            const options = q?.options ?? f.options;
+            const options = f.options ?? q?.options;
             return (
               <Chip
                 key={f.key}
+                field={f.key}
                 label={f.label}
                 value={missing ? undefined : raw}
                 missing={missing}
@@ -214,16 +338,16 @@ export function ProfileCard({
           })}
         </div>
 
-        {missingCount > 0 && questions.length > 0 && (
+        {missingCount > 0 && relevantQuestions.length > 0 && (
           <div className="space-y-2">
             <p className="text-xs font-medium text-muted-foreground">
               {t('profile.missingField')} ({missingCount})
             </p>
-            <QuickReplies questions={questions.filter((q) => fields.some((f) => f.key === q.field))} onAnswer={onUpdateField} />
+            <QuickReplies questions={relevantQuestions} onAnswer={onUpdateField} />
           </div>
         )}
 
-        {editable && onConfirm && (
+        {editable && onConfirm && !normalized.profileConfirmed && (
           <div className="flex items-center gap-3 pt-1">
             <Button onClick={onConfirm} className="w-full sm:w-auto">
               <BadgeCheck className="h-4 w-4" aria-hidden="true" />
@@ -244,6 +368,7 @@ export function QuickReplies({
   onAnswer?: (field: string, value: string | number) => void;
 }) {
   const { t } = useTranslation();
+  const optionLabel = useOptionLabel();
   const [openInput, setOpenInput] = useState<string | null>(null);
   const [draft, setDraft] = useState('');
 
@@ -251,67 +376,70 @@ export function QuickReplies({
 
   return (
     <div className="space-y-3">
-      {questions.map((q) => (
-        <div key={q.field} className="space-y-1.5">
-          <p className="text-sm font-medium">{q.question}</p>
-          <div className="flex flex-wrap gap-2">
-            {q.options?.map((opt) => (
-              <Button
-                key={opt}
-                variant="outline"
-                size="sm"
-                onClick={() => onAnswer?.(q.field, opt)}
-                className="min-h-[36px]"
-              >
-                {opt}
-              </Button>
-            ))}
-            {openInput === q.field ? (
-              <span className="flex items-center gap-1.5">
-                <Input
-                  autoFocus
-                  value={draft}
-                  onChange={(e) => setDraft(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && draft.trim()) {
-                      onAnswer?.(q.field, q.type === 'number' ? Number(draft) : draft.trim());
-                      setDraft('');
-                      setOpenInput(null);
-                    }
-                  }}
-                  placeholder={q.question}
-                  className="h-9 min-h-[36px] w-44"
-                  aria-label={q.question}
-                />
+      {questions.map((q) => {
+        const questionText = q.question || (q as unknown as { text?: string }).text || '';
+        return (
+          <div key={q.field} className="space-y-1.5">
+            {questionText && <p className="text-sm font-medium">{questionText}</p>}
+            <div className="flex flex-wrap gap-2">
+              {q.options?.map((opt) => (
                 <Button
-                  size="iconSm"
-                  onClick={() => {
-                    if (draft.trim()) {
-                      onAnswer?.(q.field, q.type === 'number' ? Number(draft) : draft.trim());
-                      setDraft('');
-                      setOpenInput(null);
-                    }
-                  }}
-                  aria-label={t('common.save')}
-                  className="h-9 w-9 min-h-[36px]"
+                  key={opt}
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onAnswer?.(q.field, opt)}
+                  className="min-h-[36px]"
                 >
-                  <Check className="h-4 w-4" />
+                  {optionLabel(q.field as FieldKey, opt)}
                 </Button>
-              </span>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setOpenInput(q.field)}
-                className="min-h-[36px] border border-dashed border-border"
-              >
-                <Plus className="h-3.5 w-3.5" aria-hidden="true" />
-                {t('profile.edit')}
-              </Button>
-            )}
+              ))}
+              {openInput === q.field ? (
+                <span className="flex items-center gap-1.5">
+                  <Input
+                    autoFocus
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && draft.trim()) {
+                        onAnswer?.(q.field, q.type === 'number' ? Number(draft) : draft.trim());
+                        setDraft('');
+                        setOpenInput(null);
+                      }
+                    }}
+                    placeholder={questionText || t('profile.edit')}
+                    className="h-9 min-h-[36px] w-44"
+                    aria-label={questionText || t('profile.edit')}
+                  />
+                  <Button
+                    size="iconSm"
+                    onClick={() => {
+                      if (draft.trim()) {
+                        onAnswer?.(q.field, q.type === 'number' ? Number(draft) : draft.trim());
+                        setDraft('');
+                        setOpenInput(null);
+                      }
+                    }}
+                    aria-label={t('common.save')}
+                    className="h-9 w-9 min-h-[36px]"
+                  >
+                    <Check className="h-4 w-4" />
+                  </Button>
+                </span>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setOpenInput(q.field)}
+                  className="min-h-[36px] border border-dashed border-border"
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                  {t('profile.edit')}
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

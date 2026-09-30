@@ -122,9 +122,12 @@
     },
     "premisesTypes": {
       "factory": "Factory unit",
+      "factory_unit": "Factory unit",
       "workshop": "Workshop",
       "home": "Home",
-      "commercial": "Commercial"
+      "commercial": "Commercial",
+      "shop": "Shop",
+      "warehouse": "Warehouse"
     }
   },
   "roadmap": {

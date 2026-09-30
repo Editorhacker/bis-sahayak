@@ -36,11 +36,49 @@ export interface ChatResponse {
   }>;
   disclaimer: string;
   suggestedActions: string[];
-  clarifyingQuestions?: Array<{ field: string; text: string; options?: string[]; type?: string }>;
+  clarifyingQuestions?: Array<{ field: string; text?: string; question?: string; options?: string[]; type?: string }>;
   profileCard?: Record<string, unknown>;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+
+function normalizeProfileCard(raw?: Record<string, unknown>): Record<string, unknown> | undefined {
+  if (!raw) return undefined;
+  const product = (raw.product && typeof raw.product === 'object' && !Array.isArray(raw.product))
+    ? (raw.product as Record<string, unknown>)
+    : {};
+  const location = (raw.location && typeof raw.location === 'object' && !Array.isArray(raw.location))
+    ? (raw.location as Record<string, unknown>)
+    : {};
+
+  const city = (location.city ?? raw.city) as string | undefined;
+  const state = (location.state ?? raw.state) as string | undefined;
+  const locParts = [city, state].filter(Boolean);
+  const locationStr = typeof raw.location === 'string' && raw.location !== '[object Object]'
+    ? raw.location
+    : (locParts.length > 0 ? locParts.join(', ') : undefined);
+
+  const productName = (product.name ?? raw.productName ?? raw.businessName) as string | undefined;
+  const material = (product.material ?? raw.material) as string | undefined;
+  const structure = (raw.structure ?? raw.businessStructure) as string | undefined;
+  const workerCount = (raw.workerCount ?? raw.employeeCount) as number | undefined;
+  const annualTurnover = (raw.annualTurnover ?? raw.expectedTurnover) as number | undefined;
+
+  return {
+    ...raw,
+    productName,
+    material,
+    location: locationStr,
+    city,
+    state,
+    structure,
+    businessStructure: structure,
+    workerCount,
+    employeeCount: workerCount,
+    annualTurnover,
+    expectedTurnover: annualTurnover,
+  };
+}
 
 export async function processChatMessage(
   message: string,
@@ -55,6 +93,12 @@ export async function processChatMessage(
     language: context.language,
   });
 
+  const clarifyingQuestions = aiResult.clarifying_questions?.map((q) => ({
+    ...q,
+    question: (q as Record<string, unknown>).question as string || q.text || '',
+    text: q.text || (q as Record<string, unknown>).question as string || '',
+  }));
+
   const response: ChatResponse = {
     conversationId: context.conversationId,
     messageId: aiResult.message_id,
@@ -64,8 +108,8 @@ export async function processChatMessage(
     citations: aiResult.citations,
     disclaimer: aiResult.disclaimer,
     suggestedActions: aiResult.suggested_actions,
-    clarifyingQuestions: aiResult.clarifying_questions,
-    profileCard: aiResult.profile_card,
+    clarifyingQuestions,
+    profileCard: normalizeProfileCard(aiResult.profile_card),
     roadmapId: aiResult.roadmap_id,
   };
 
