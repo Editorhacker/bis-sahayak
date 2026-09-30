@@ -99,6 +99,7 @@ export interface Citation {
   version?: string;
   verifiedOn: string;
   authority?: string;
+  chunkId?: number;
 }
 
 

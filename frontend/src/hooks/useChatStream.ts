@@ -161,7 +161,21 @@ export function useChatStream() {
               break;
             }
             case 'citations': {
-              const cites = (data.citations ?? data) as Citation[];
+              const rawCites = (Array.isArray(data.citations) ? data.citations : Array.isArray(data) ? data : []) as Array<Record<string, unknown>>;
+              const cites: Citation[] = rawCites.map((c, idx) => ({
+                id: String(c.id ?? c.chunkId ?? `c-${idx}`),
+                documentTitle: String(c.documentTitle ?? c.title ?? c.standardNumber ?? 'Official Standard'),
+                standardNumber: c.standardNumber ? String(c.standardNumber) : undefined,
+                section: c.section ? String(c.section) : undefined,
+                clause: c.clause ? String(c.clause) : undefined,
+                page: typeof c.page === 'number' ? c.page : undefined,
+                excerpt: String(c.excerpt ?? c.content ?? ''),
+                sourceUrl: c.sourceUrl ? String(c.sourceUrl) : undefined,
+                version: c.version ? String(c.version) : undefined,
+                verifiedOn: String(c.verifiedOn ?? c.lastVerifiedAt ?? new Date().toISOString().slice(0, 10)),
+                authority: c.authority ? String(c.authority) : undefined,
+                chunkId: typeof c.chunkId === 'number' ? c.chunkId : undefined,
+              }));
               useChatStore.getState().updateMessage(assistantId, { citations: cites });
               cbs.onCitations?.(cites);
               break;

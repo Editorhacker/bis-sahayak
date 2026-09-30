@@ -148,9 +148,9 @@ export function SuggestedActions({ actions }: { actions: string[] }) {
     <div className="space-y-1.5">
       <p className="text-xs font-medium text-muted-foreground">{t('chat.followUp')}</p>
       <div className="flex flex-wrap gap-2">
-        {actions.map((a) => (
+        {actions.map((a, idx) => (
           <span
-            key={a}
+            key={`action-${idx}-${a}`}
             className="inline-flex items-center rounded-lg border bg-card px-3 py-2 text-xs font-medium text-foreground"
           >
             {a}
@@ -179,8 +179,8 @@ export function RoadmapSummaryCard({
           <h4 className="text-sm font-semibold">{t('roadmap.title')}</h4>
         </div>
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-          {phases.map((p) => (
-            <div key={p.name} className="rounded-lg bg-muted/50 px-2.5 py-2 text-center">
+          {phases.map((p, idx) => (
+            <div key={`phase-${p.name || idx}-${idx}`} className="rounded-lg bg-muted/50 px-2.5 py-2 text-center">
               <p className="text-lg font-semibold leading-tight">{p.count}</p>
               <p className="text-[11px] text-muted-foreground truncate">{p.name}</p>
             </div>
@@ -299,15 +299,19 @@ export function ChatMessageItem({
 
       {!message.isStreaming && message.citations && message.citations.length > 0 && (
         <div className="flex flex-wrap gap-2" role="list" aria-label={t('chat.sources')}>
-          {message.citations.map((c, i) => (
-            <CitationChip
-              key={c.id}
-              index={i}
-              citation={c}
-              isActive={activeCitationId === c.id}
-              onClick={() => onCitationClick?.(c)}
-            />
-          ))}
+          {message.citations.map((c, i) => {
+            const cId = c.id || String(c.chunkId || i);
+            const isMatch = Boolean(activeCitationId && (activeCitationId === c.id || activeCitationId === String(c.chunkId)));
+            return (
+              <CitationChip
+                key={`cit-${cId}-${i}`}
+                index={i}
+                citation={c}
+                isActive={isMatch}
+                onClick={() => onCitationClick?.(c)}
+              />
+            );
+          })}
         </div>
       )}
 
@@ -353,6 +357,9 @@ function AssistantProse({
         if (match) {
           const n = Number(match[1]);
           const citation = citations?.[n - 1];
+          const isMatch = Boolean(
+            citation && activeCitationId && (activeCitationId === citation.id || activeCitationId === String(citation.chunkId))
+          );
           return (
             <button
               key={i}
@@ -362,7 +369,7 @@ function AssistantProse({
               className={cn(
                 'mx-0.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full px-1 align-super text-[10px] font-bold transition-colors',
                 citation
-                  ? activeCitationId === citation.id
+                  ? isMatch
                     ? 'bg-primary text-primary-foreground'
                     : 'bg-primary/15 text-primary hover:bg-primary/30'
                   : 'bg-muted text-muted-foreground cursor-default'

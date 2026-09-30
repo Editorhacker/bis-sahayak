@@ -73,7 +73,7 @@ function buildRoadmapResponse(roadmap: any, steps: any[]) {
     steps: (phaseMap.get(phaseKey) || []).sort((a, b) => a.order - b.order),
   })).filter(p => p.steps.length > 0);
 
-  const resData: any = {
+  const baseRoadmap = {
     id: roadmap.id,
     businessId: roadmap.businessId,
     version: roadmap.version,
@@ -85,8 +85,11 @@ function buildRoadmapResponse(roadmap: any, steps: any[]) {
     steps: formattedSteps,
     roadmapId: roadmap.id,
   };
-  resData.roadmap = resData;
-  return resData;
+
+  return {
+    ...baseRoadmap,
+    roadmap: { ...baseRoadmap },
+  };
 }
 
 export const generateRoadmapController = asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
